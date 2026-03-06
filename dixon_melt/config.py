@@ -19,6 +19,11 @@ SNOTEL_ELEV = 1230.0    # m, Nuka SNOTEL actual elevation
 SNOTEL_LAT = 59.698     # from NRCS metadata
 SNOTEL_LON = -150.712   # from NRCS metadata
 
+# ── Merged climate reference elevation ────────────────────────────
+# The merged climate file has temperatures adjusted to Dixon AWS elev (804m).
+# This is the correct reference for the model's lapse rate extrapolation.
+CLIMATE_REF_ELEV = 804.0  # m, Dixon AWS / ABL stake elevation
+
 # ── Default model parameters (calibration will tune these) ──────────
 DEFAULT_PARAMS = dict(
     # Melt parameters (Method 2: enhanced temperature index)

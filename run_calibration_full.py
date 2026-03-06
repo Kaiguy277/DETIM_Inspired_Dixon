@@ -1,5 +1,5 @@
 """
-Comprehensive multi-decade calibration of Dixon Glacier DETIM — v2.
+Comprehensive multi-decade calibration of Dixon Glacier DETIM — v3.
 
 Fixes from v1:
   1. Annual & geodetic runs start Oct 1 with SWE=0 (no double-counting).
@@ -7,6 +7,12 @@ Fixes from v1:
   2. Removed snow_redist parameter (was multiplicatively redundant with
      precip_corr). precip_corr now handles total precipitation scaling.
   3. Widened precip_corr bounds to [1.0, 6.0] since it absorbs snow_redist role.
+
+Fix from v2 (D-006):
+  4. Corrected station_elev from 1230m (SNOTEL) to 804m (Dixon AWS).
+     Merged climate data is already lapse-adjusted to 804m, so the model
+     was running +2.8C too warm everywhere. This was the root cause of
+     CAL-001 and CAL-002 failures.
 
 Calibration strategy
 --------------------
@@ -314,8 +320,8 @@ def compute_objective(x, fmodel, targets):
 def main():
     t_start = time.time()
     print("=" * 70)
-    print("DIXON GLACIER DETIM — COMPREHENSIVE CALIBRATION v2")
-    print("Fixes: no SWE double-counting, snow_redist removed")
+    print("DIXON GLACIER DETIM — COMPREHENSIVE CALIBRATION v3")
+    print("Fixes: SWE init, snow_redist removed, station_elev corrected (D-006)")
     print("=" * 70)
 
     # ── Load data ───────────────────────────────────────────────────
@@ -338,7 +344,10 @@ def main():
     # ── Initialize FastDETIM ────────────────────────────────────────
     from dixon_melt.fast_model import FastDETIM
     from dixon_melt import config
-    fmodel = FastDETIM(grid, ipot_table, config.SNOTEL_ELEV)
+    # Use CLIMATE_REF_ELEV (804m), NOT SNOTEL_ELEV (1230m).
+    # Merged climate temps are already adjusted to Dixon AWS elevation.
+    # See D-006 in research_log/decisions.md.
+    fmodel = FastDETIM(grid, ipot_table, config.CLIMATE_REF_ELEV)
 
     # ── Build targets (precomputes all numpy arrays) ────────────────
     targets = build_calibration_targets(stakes, geodetic, climate)
@@ -414,7 +423,7 @@ def main():
 
     # ── Print results ───────────────────────────────────────────────
     print(f"\n{'=' * 70}")
-    print(f"CALIBRATION v2 COMPLETE")
+    print(f"CALIBRATION v3 COMPLETE")
     print(f"{'=' * 70}")
     print(f"  Success: {result.success}")
     print(f"  Message: {result.message}")
@@ -474,18 +483,19 @@ def main():
               f"+/- {gtgt['unc']:.3f} ({len(annual_bals)} years)")
 
     # ── Save outputs ────────────────────────────────────────────────
-    with open(OUTPUT_DIR / 'best_params_v2.json', 'w') as f:
+    with open(OUTPUT_DIR / 'best_params_v3.json', 'w') as f:
         json.dump(best_params, f, indent=2)
 
     log_df = pd.DataFrame(log)
-    log_df.to_csv(OUTPUT_DIR / 'calibration_log_v2.csv', index=False)
+    log_df.to_csv(OUTPUT_DIR / 'calibration_log_v3.csv', index=False)
 
     summary = {
-        'version': 2,
+        'version': 3,
         'fixes': [
             'annual/geodetic runs: winter_swe=0 (no double-counting)',
             'snow_redist removed (redundant with precip_corr)',
             'summer runs: observed winter SWE as init',
+            'station_elev corrected: 1230m -> 804m (D-006)',
         ],
         'success': bool(result.success),
         'message': result.message,
@@ -503,10 +513,10 @@ def main():
             'w_physics': W_PHYSICS,
         },
     }
-    with open(OUTPUT_DIR / 'calibration_summary_v2.json', 'w') as f:
+    with open(OUTPUT_DIR / 'calibration_summary_v3.json', 'w') as f:
         json.dump(summary, f, indent=2)
 
-    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v2 suffix)")
+    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v3 suffix)")
     print("Done!")
 
 

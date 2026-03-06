@@ -99,9 +99,49 @@ observations. Root cause identified: winter SWE double-counting in annual runs
 | T0 (°C) | 0.5 | 3.0 |
 
 ### Results
+**ABORTED** at step 66 / 120 (eval ~7050, cost 15.87).
+
+Same pathology as CAL-001: MF≈1.0 (bound), precip_corr≈6.0 (bound), lapse_rate≈-3.5 (bound).
+SWE initialization was not the root cause. Root cause identified as temperature
+reference elevation mismatch — see D-006.
+
+### Output files
+- `calibration_output/calibration_v2_stdout.log` (partial)
+- No v2 JSON outputs (killed before completion)
+
+---
+
+## Run CAL-003: v3 Calibration (station_elev fix)
+
+**Date:** 2026-03-06
+**Script:** `run_calibration_full.py` (current, v3)
+**Status:** RUNNING
+
+### Fixes applied (cumulative)
+1. (D-005) SWE=0 for Oct 1 starts, observed SWE for summer starts
+2. (D-005) snow_redist removed
+3. (D-006) station_elev corrected from 1230m → 804m to match merged climate data
+
+### Configuration
+Same DE settings as CAL-002 (120 maxiter, 15 popsize, 7 params).
+Bounds unchanged — the temperature fix should allow parameters to find
+physically reasonable values within existing bounds.
+
+### Parameters (7)
+| Parameter | Lower | Upper |
+|-----------|-------|-------|
+| MF (mm/d/K) | 1.0 | 12.0 |
+| r_snow (mm m² W⁻¹ d⁻¹ K⁻¹) | 0.02e-3 | 1.5e-3 |
+| r_ice | 0.05e-3 | 3.0e-3 |
+| lapse_rate (°C/m) | -8.5e-3 | -3.5e-3 |
+| precip_grad (frac/m) | 0.0002 | 0.006 |
+| precip_corr | 1.0 | 6.0 |
+| T0 (°C) | 0.5 | 3.0 |
+
+### Results
 *Pending — run in progress*
 
 ### Output files (expected)
-- `calibration_output/best_params_v2.json`
-- `calibration_output/calibration_log_v2.csv`
-- `calibration_output/calibration_summary_v2.json`
+- `calibration_output/best_params_v3.json`
+- `calibration_output/calibration_log_v3.csv`
+- `calibration_output/calibration_summary_v3.json`

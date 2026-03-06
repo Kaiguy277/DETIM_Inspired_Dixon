@@ -79,3 +79,25 @@ final cost = 15.0 (very poor).
 - Pattern: maximize accumulation + suppress melt = compensating for double-count
 **Files modified:** `run_calibration_full.py` (v1 backed up as `_v1.py`)
 **Parameter count:** 8 → 7 (snow_redist removed, precip_corr bounds widened to [1,6])
+
+## D-006: Fix Temperature Reference Elevation Mismatch
+
+**Date:** 2026-03-06
+**Decision:** Change model station_elev from 1230m (SNOTEL) to 804m (Dixon AWS)
+to match the merged climate data's actual reference elevation.
+**Rationale:** The merged climate file (`dixon_model_climate.csv`) contains
+temperatures already lapse-rate adjusted from Nuka SNOTEL (1230m) down to
+Dixon AWS elevation (804m) — see `climate.py:merge_climate_data()` line 154–157.
+But `FastDETIM` was initialized with `config.SNOTEL_ELEV = 1230m`, causing the
+model to apply the lapse rate from the wrong base elevation.
+
+**Impact:** Every grid cell was +2.8°C too warm (assuming -6.5°C/km lapse rate
+over the 426m discrepancy). This caused:
+- Massive over-melting, forcing MF → lower bound (1.0)
+- Far too little snow accumulation (rain instead), forcing precip_corr → upper bound
+- Both CAL-001 and CAL-002 affected — explains why cost stayed at ~15 despite fixes
+- The lapse_rate parameter partially compensated but couldn't fix a constant offset
+
+**Fix:** Set `CLIMATE_REF_ELEV = 804.0` in config.py and pass it (not SNOTEL_ELEV)
+to FastDETIM. This is a one-line change in `run_calibration_full.py`.
+**Evidence:** v2 calibration mid-run still shows MF≈1.0, precip_corr≈6.0, cost≈15.87
