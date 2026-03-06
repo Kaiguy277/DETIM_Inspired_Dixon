@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+
+# DEM rasters (large binary, not suited for git)
+*.tif
+*.tiff
+
+# Calibration logs (large, regenerable)
+calibration_output/calibration_log*.csv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

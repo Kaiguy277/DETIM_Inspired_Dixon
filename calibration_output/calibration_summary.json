@@ -1,0 +1,26 @@
+{
+  "success": false,
+  "message": "Maximum number of iterations has been exceeded.",
+  "cost": 15.015704429391146,
+  "n_evaluations": 10368,
+  "wall_time_s": 3158.0771214962006,
+  "params": {
+    "MF": 1.0008399382161572,
+    "r_snow": 2.0311610169188575e-05,
+    "r_ice": 0.002998887757527547,
+    "lapse_rate": -0.0045103615425366285,
+    "precip_grad": 0.0024696623389995733,
+    "precip_corr": 3.9983404443412507,
+    "T0": 2.99998980155471,
+    "snow_redist": 2.4935125131502565
+  },
+  "config": {
+    "grid_res": 100.0,
+    "de_maxiter": 80,
+    "de_popsize": 15,
+    "w_stake_annual": 1.0,
+    "w_stake_summer": 0.6,
+    "w_geodetic": 0.4,
+    "w_physics": 0.3
+  }
+}

@@ -1,0 +1,27 @@
+site_id,period_type,year,date_start,date_end,mb_obs_mwe,mb_obs_uncertainty_mwe,zone,elevation_m,notes
+ABL,annual,2023,2022-10-01,2023-10-03,-4.5,0.12,ABL,804.0,Annual balance 2022-10-01 to Fall 2023 DOY 276.
+ABL,summer,2023,2023-05-02,2023-10-03,-5.35,0.12,ABL,804.0,Summer balance Spring 2023 DOY 122 to Fall 2023 DOY 276.
+ABL,winter,2023,2022-10-01,2023-05-02,0.85,0.1,ABL,804.0,Winter balance 2022-10-01 to Spring 2023 DOY 122.
+ABL,annual,2024,2023-10-01,2024-09-20,-2.63,0.12,ABL,804.0,Annual balance 2023-10-01 to Fall 2024 DOY 264.
+ABL,summer,2024,2024-04-29,2024-09-20,-4.56,0.12,ABL,804.0,Summer balance Spring 2024 DOY 120 to Fall 2024 DOY 264.
+ABL,winter,2024,2023-10-01,2024-04-29,1.93,0.1,ABL,804.0,Winter balance 2023-10-01 to Spring 2024 DOY 120.
+ABL,winter,2025,2024-10-01,2025-05-11,1.6,0.1,ABL,804.0,Winter balance 2024-10-01 to Spring 2025 DOY 131.
+ACC,annual,2023,2022-10-01,2023-10-03,0.37,0.12,ACC,1293.0,Annual balance 2022-10-01 to Fall 2023 DOY 276.
+ACC,summer,2023,2023-05-02,2023-10-03,-2.25,0.12,ACC,1293.0,Summer balance Spring 2023 DOY 122 to Fall 2023 DOY 276.
+ACC,winter,2023,2022-10-01,2023-05-02,2.45,0.1,ACC,1293.0,Winter balance 2022-10-01 to Spring 2023 DOY 122.
+ACC,annual,2024,2023-10-01,2024-09-20,1.46,0.12,ACC,1293.0,Annual balance 2023-10-01 to Fall 2024 DOY 264.
+ACC,summer,2024,2024-04-29,2024-09-20,-1.55,0.12,ACC,1293.0,Summer balance Spring 2024 DOY 120 to Fall 2024 DOY 264.
+ACC,winter,2024,2023-10-01,2024-04-29,3.01,0.1,ACC,1293.0,Winter balance 2023-10-01 to Spring 2024 DOY 120.
+ACC,winter,2025,2024-10-01,2025-05-11,3.53,0.15,ACC,1293.0,Estimated winter balance 2024-10-01 to Spring 2025 DOY 131 (Method 1 scaled gradient).
+ACC,annual,2025,2024-10-01,2025-10-01,1.875,0.15,ACC,1293.0,Estimated annual balance 2024-10-01 to Fall 2025 DOY 274.
+ACC,summer,2025,2025-05-11,2025-10-01,-1.655,0.15,ACC,1293.0,Estimated summer balance Spring 2025 DOY 131 to Fall 2025 DOY 274.
+ELA,annual,2023,2022-10-01,2023-10-03,0.1,0.12,ELA,1078.0,Annual balance 2022-10-01 to Fall 2023 DOY 276.
+ELA,summer,2023,2023-05-02,2023-10-03,-2.26,0.12,ELA,1078.0,Summer balance Spring 2023 DOY 122 to Fall 2023 DOY 276.
+ELA,winter,2023,2022-10-01,2023-05-02,2.36,0.1,ELA,1078.0,Winter balance 2022-10-01 to Spring 2023 DOY 122.
+ELA,annual,2024,2023-10-01,2024-09-20,0.1,0.12,ELA,1078.0,Annual balance 2023-10-01 to Fall 2024 DOY 264.
+ELA,summer,2024,2024-04-29,2024-09-20,-2.5,0.12,ELA,1078.0,Summer balance Spring 2024 DOY 120 to Fall 2024 DOY 264.
+ELA,winter,2024,2023-10-01,2024-04-29,2.6,0.1,ELA,1078.0,Winter balance 2023-10-01 to Spring 2024 DOY 120.
+ELA,winter,2025,2024-10-01,2025-05-11,3.04,0.1,ELA,1078.0,Winter balance 2024-10-01 to Spring 2025 DOY 131.
+ELA,annual,2025,2024-10-01,2025-10-01,1.08,0.12,ELA,1078.0,Annual balance 2024-10-01 to Fall 2025 DOY 274 (estimated).
+ELA,summer,2025,2025-05-11,2025-10-01,-1.96,0.12,ELA,1078.0,Summer balance Spring 2025 DOY 131 to Fall 2025 DOY 274 (estimated).
+
