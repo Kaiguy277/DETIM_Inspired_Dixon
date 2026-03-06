@@ -225,9 +225,55 @@ beyond a single lapse rate. Or the climate data has non-stationarity issues.
 | T0 (C) | 0.5 | 3.0 | Rain/snow threshold |
 
 ### Results
-*Pending — run in progress*
+| Metric | Value |
+|--------|-------|
+| Final cost | 17.823 |
+| Convergence | NO (hit maxiter=80) |
+| Total evaluations | 9,909 |
+| Wall time | 3,545 s (59.1 min) |
 
-### Output files (expected)
+| Parameter | Best | At bound? |
+|-----------|------|-----------|
+| MF (mm/d/K) | 4.123 | No |
+| MF_grad (per m) | -0.00999 | YES (lower) |
+| r_snow | 0.001496 | YES (upper) |
+| r_ice | 0.001501 | Near r_snow |
+| internal_lapse (°C/m) | -0.00798 | YES (lower) |
+| precip_grad | 0.000383 | No |
+| precip_corr | 0.505 | YES (lower) |
+| T0 (°C) | 0.519 | YES (lower) |
+
+### Validation
+| Target | Modeled | Observed | Residual |
+|--------|---------|----------|----------|
+| ABL 2023 annual | -3.58 | -4.50 | +0.92 |
+| ABL 2024 annual | -3.91 | -2.63 | -1.28 |
+| ELA 2023 annual | -0.12 | +0.10 | -0.22 |
+| ELA 2024 annual | -0.34 | +0.10 | -0.44 |
+| ACC 2023 annual | +0.74 | +0.37 | +0.37 |
+| ACC 2024 annual | +0.59 | +1.46 | -0.87 |
+| Geodetic 2000-2010 | -0.68 | -1.07 | +0.40 |
+| Geodetic 2010-2020 | -1.08 | -0.81 | -0.27 |
+| Geodetic 2000-2020 | -0.88 | -0.94 | +0.06 |
+
+### Assessment
+**MAJOR PROGRESS on MF and geodetic fit.** MF=4.1 is literature-reasonable.
+Geodetic 2000-2020 modeled (-0.88) closely matches observed (-0.94).
+Statistical temperature transfer (D-007) is working.
+
+**Remaining problems:**
+- 4/8 params at bounds (MF_grad, internal_lapse, precip_corr, T0)
+- precip_corr=0.5 → model wants LESS precip than Nuka (unusual)
+- r_snow ≈ r_ice → no snow/ice melt contrast
+- Year-to-year residuals are large and flip sign (ABL: +0.92 in 2023, -1.28 in 2024)
+- ELA/ACC systematically too negative in 2024-2025
+
+**Root issue:** The model improves glacier-wide and long-term fit but can't capture
+interannual variability. The winter temperature transfer (standard lapse for Oct-Apr)
+may be a major error source — winter accumulation drives year-to-year differences.
+
+### Output files
 - `calibration_output/best_params_v4.json`
 - `calibration_output/calibration_log_v4.csv`
 - `calibration_output/calibration_summary_v4.json`
+- `calibration_output/calibration_v4_stdout.log`

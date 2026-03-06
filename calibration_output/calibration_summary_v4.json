@@ -1,0 +1,33 @@
+{
+  "version": 4,
+  "fixes": [
+    "Statistical temp transfer: Nuka -> on-glacier (D-007)",
+    "Elevation-dependent melt factor (MF_grad)",
+    "Raw Nuka input (not pre-adjusted)",
+    "internal_lapse replaces lapse_rate"
+  ],
+  "success": false,
+  "message": "Maximum number of iterations has been exceeded.",
+  "cost": 17.823126556244482,
+  "n_evaluations": 9909,
+  "wall_time_s": 3544.9964175224304,
+  "params": {
+    "MF": 4.123462602580872,
+    "MF_grad": -0.009988675461671679,
+    "r_snow": 0.0014955660487980058,
+    "r_ice": 0.001500642196472837,
+    "internal_lapse": -0.00797666185991415,
+    "precip_grad": 0.0003825216202469092,
+    "precip_corr": 0.5047325910531528,
+    "T0": 0.5191003161141738
+  },
+  "config": {
+    "grid_res": 100.0,
+    "de_maxiter": 80,
+    "de_popsize": 15,
+    "w_stake_annual": 1.0,
+    "w_stake_summer": 0.6,
+    "w_geodetic": 0.4,
+    "w_physics": 0.3
+  }
+}
