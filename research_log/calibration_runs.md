@@ -277,3 +277,36 @@ may be a major error source — winter accumulation drives year-to-year differen
 - `calibration_output/calibration_log_v4.csv`
 - `calibration_output/calibration_summary_v4.json`
 - `calibration_output/calibration_v4_stdout.log`
+
+---
+
+## Run CAL-005: v4b Calibration (winter katabatic correction)
+
+**Date:** 2026-03-06
+**Script:** `run_calibration_full.py` (unchanged from v4, config.py updated)
+**Status:** RUNNING
+
+### Changes from CAL-004
+1. (D-010) Winter transfer coefficients changed from standard lapse
+   (alpha=1.0, beta=+2.77) to reduced katabatic (alpha=0.85, beta=+1.0)
+   for Oct-Apr months.
+
+### Configuration
+Same as CAL-004 (80 maxiter, 15 popsize, 8 params, same bounds).
+
+### Hypothesis
+Winter accumulation was 22% of observed because Oct-Nov temps were too warm.
+With corrected winter transfer, expect:
+- precip_corr to increase from 0.5 to 1.5-3.0
+- T0 to increase from 0.5 to 1.0-2.0
+- Better stake annual fits (especially ACC/ELA winter balance)
+- Reduced interannual residual variability
+
+### Results
+*Pending — run in progress*
+
+### Output files (expected)
+- `calibration_output/best_params_v5.json`
+- `calibration_output/calibration_log_v5.csv`
+- `calibration_output/calibration_summary_v5.json`
+- `calibration_output/calibration_v5_stdout.log`

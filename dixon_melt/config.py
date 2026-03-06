@@ -25,20 +25,21 @@ DIXON_AWS_ELEV = 804.0  # m, near ABL stake
 # ── Nuka → Dixon temperature transfer (D-007) ──────────────────────
 # Statistical downscaling from off-glacier SNOTEL to on-glacier surface.
 # T_glacier_ref = TRANSFER_ALPHA[month] * T_nuka + TRANSFER_BETA[month]
-# Derived from 256-day overlap (2024-2025 summers). Months without data
-# (Oct-Apr) use standard lapse rate equivalent (+2.77°C offset at 804m).
-# See research_log/nuka_dixon_temperature_analysis.md
+# Summer (May-Sep): derived from 256-day overlap (2024-2025 summers).
+# Winter (Oct-Apr): reduced katabatic correction (D-010). Estimated, not
+# measured — year-round sensors needed for validation.
+# See research_log/nuka_dixon_temperature_analysis.md, cal004_diagnosis.md
 TRANSFER_ALPHA = np.array([
-    1.0,    1.0,    1.0,    1.0,     # Jan-Apr: standard lapse
-    0.667,  0.534,  0.574,  0.391,   # May-Aug: katabatic-corrected
-    1.211,                            # Sep: transition
-    1.0,    1.0,    1.0,             # Oct-Dec: standard lapse
+    0.85,   0.85,   0.85,   0.85,    # Jan-Apr: reduced katabatic (D-010)
+    0.667,  0.534,  0.574,  0.391,   # May-Aug: measured katabatic
+    1.211,                            # Sep: measured transition
+    0.85,   0.85,   0.85,            # Oct-Dec: reduced katabatic (D-010)
 ])
 TRANSFER_BETA = np.array([
-    2.77,   2.77,   2.77,   2.77,    # Jan-Apr
-   -2.77,  -1.27,  -1.29,   0.56,   # May-Aug
-   -7.06,                            # Sep
-    2.77,   2.77,   2.77,            # Oct-Dec
+    1.0,    1.0,    1.0,    1.0,     # Jan-Apr: reduced katabatic (D-010)
+   -2.77,  -1.27,  -1.29,   0.56,   # May-Aug: measured
+   -7.06,                            # Sep: measured
+    1.0,    1.0,    1.0,             # Oct-Dec: reduced katabatic (D-010)
 ])
 
 # ── Stake locations ─────────────────────────────────────────────────

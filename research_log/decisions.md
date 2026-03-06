@@ -150,3 +150,31 @@ one parameter to capture this. Negative MF_grad = less melt at higher elevations
   6. run_calibration_full.py: v4 using raw Nuka input, 8 params
 **Parameter set (8):** MF, MF_grad, r_snow, r_ice, internal_lapse, precip_grad,
   precip_corr, T0
+
+## D-010: Winter Katabatic Correction for Temperature Transfer
+
+**Date:** 2026-03-06
+**Decision:** Apply reduced katabatic correction for Oct-Apr months in the
+Nuka→Dixon temperature transfer, replacing the standard lapse assumption.
+**Rationale:** CAL-004 diagnosis (see `cal004_diagnosis.md`) revealed that the
+standard lapse transfer for winter months (+2.77°C at 804m) makes October and
+November too warm, causing precipitation to fall as rain instead of snow.
+The model accumulated only 22% of observed winter balance at ELA/ACC.
+This forced precip_corr to 0.5 (compensating for rain damage) and T0 to 0.5°C.
+
+**Winter coefficients changed:**
+  - Old (standard lapse): alpha=1.0, beta=+2.77 for Oct-Apr
+  - New (reduced katabatic): alpha=0.85, beta=+1.0 for Oct-Apr
+
+**Physical basis:** Katabatic cooling operates year-round because the glacier
+surface remains below ambient air temperature even in winter. The correction
+is smaller than summer (-1.8°C vs -5.1°C) because the ambient-surface
+temperature gradient is smaller when both are cold.
+
+**Expected effect:** More Oct-Nov precipitation falls as snow, allowing
+precip_corr and T0 to find physically reasonable values. Winter accumulation
+at ELA/ACC should increase dramatically.
+
+**Limitation:** These winter coefficients are estimated, not measured. Year-round
+on-glacier temperature sensors should be recommended in the thesis as critical
+future work.

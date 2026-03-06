@@ -34,7 +34,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 # ── DE Configuration ────────────────────────────────────────────────
 GRID_RES = 100.0
-DE_MAXITER = 150
+DE_MAXITER = 80
 DE_POPSIZE = 15
 DE_SEED = 42
 DE_TOL = 1e-4
@@ -263,8 +263,8 @@ def compute_objective(x, fmodel, targets):
 def main():
     t_start = time.time()
     print("=" * 70)
-    print("DIXON GLACIER DETIM — CALIBRATION v4")
-    print("Statistical temp transfer + elevation-dependent MF")
+    print("DIXON GLACIER DETIM — CALIBRATION v5")
+    print("Statistical temp transfer + winter katabatic correction (D-010)")
     print("=" * 70)
 
     # ── Load data ───────────────────────────────────────────────────
@@ -369,7 +369,7 @@ def main():
     best_params = {name: val for name, val in zip(PARAM_NAMES, result.x)}
 
     print(f"\n{'=' * 70}")
-    print(f"CALIBRATION v4 COMPLETE")
+    print(f"CALIBRATION v5 COMPLETE")
     print(f"{'=' * 70}")
     print(f"  Success: {result.success}")
     print(f"  Message: {result.message}")
@@ -425,19 +425,20 @@ def main():
               f"+/- {gtgt['unc']:.3f} ({len(annual_bals)} years)")
 
     # ── Save outputs ────────────────────────────────────────────────
-    with open(OUTPUT_DIR / 'best_params_v4.json', 'w') as f:
+    with open(OUTPUT_DIR / 'best_params_v5.json', 'w') as f:
         json.dump(best_params, f, indent=2)
 
     log_df = pd.DataFrame(log)
-    log_df.to_csv(OUTPUT_DIR / 'calibration_log_v4.csv', index=False)
+    log_df.to_csv(OUTPUT_DIR / 'calibration_log_v5.csv', index=False)
 
     summary = {
-        'version': 4,
+        'version': 5,
         'fixes': [
             'Statistical temp transfer: Nuka -> on-glacier (D-007)',
             'Elevation-dependent melt factor (MF_grad)',
             'Raw Nuka input (not pre-adjusted)',
             'internal_lapse replaces lapse_rate',
+            'Winter katabatic correction: alpha=0.85, beta=+1.0 for Oct-Apr (D-010)',
         ],
         'success': bool(result.success),
         'message': result.message,
@@ -455,10 +456,10 @@ def main():
             'w_physics': W_PHYSICS,
         },
     }
-    with open(OUTPUT_DIR / 'calibration_summary_v4.json', 'w') as f:
+    with open(OUTPUT_DIR / 'calibration_summary_v5.json', 'w') as f:
         json.dump(summary, f, indent=2)
 
-    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v4)")
+    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v5)")
     print("Done!")
 
 
