@@ -186,3 +186,48 @@ beyond a single lapse rate. Or the climate data has non-stationarity issues.
 - `calibration_output/calibration_log_v3.csv`
 - `calibration_output/calibration_summary_v3.json`
 - `calibration_output/calibration_v3_stdout.log`
+
+---
+
+## Run CAL-004: v4 Calibration (statistical temp transfer + MF_grad)
+
+**Date:** 2026-03-06
+**Script:** `run_calibration_full.py` (v4)
+**Status:** RUNNING
+
+### Changes from CAL-003
+1. (D-007) Statistical temperature transfer from raw Nuka SNOTEL
+2. (D-008) Elevation-dependent melt factor (MF_grad parameter)
+3. (D-009) Complete model architecture overhaul
+4. Input is raw Nuka temperature at 1230m (not pre-adjusted)
+5. internal_lapse replaces lapse_rate (on-glacier vertical gradient)
+
+### Configuration
+| Setting | Value |
+|---------|-------|
+| Grid resolution | 100 m |
+| Method | differential_evolution |
+| Population size | 15 per param (120 total) |
+| Max iterations | 150 |
+| Eval time | ~584 ms |
+| Est. total time | ~176 min |
+
+### Parameters (8)
+| Parameter | Lower | Upper | Role |
+|-----------|-------|-------|------|
+| MF (mm/d/K) | 1.0 | 12.0 | Base melt factor |
+| MF_grad (mm/d/K/m) | -0.01 | 0.0 | Melt factor elevation gradient |
+| r_snow | 0.02e-3 | 1.5e-3 | Radiation factor (snow) |
+| r_ice | 0.05e-3 | 3.0e-3 | Radiation factor (ice) |
+| internal_lapse (C/m) | -8.0e-3 | -3.0e-3 | On-glacier lapse rate |
+| precip_grad (frac/m) | 0.0002 | 0.006 | Precipitation gradient |
+| precip_corr | 0.5 | 5.0 | Precipitation correction |
+| T0 (C) | 0.5 | 3.0 | Rain/snow threshold |
+
+### Results
+*Pending — run in progress*
+
+### Output files (expected)
+- `calibration_output/best_params_v4.json`
+- `calibration_output/calibration_log_v4.csv`
+- `calibration_output/calibration_summary_v4.json`

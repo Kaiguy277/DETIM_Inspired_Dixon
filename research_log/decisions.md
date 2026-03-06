@@ -126,3 +126,27 @@ cause of all calibration failures (not D-005 or D-006, though both were also bug
 
 **Plan:** Implement monthly statistical transfer in temperature.py, re-calibrate.
 See `research_log/project_plan.md` Phase 1 for implementation details.
+
+## D-008: Elevation-Dependent Melt Factor
+
+**Date:** 2026-03-06
+**Decision:** Add MF_grad parameter: MF(z) = MF + MF_grad * (z - z_ref).
+**Rationale:** A single MF cannot capture the ABL-to-ACC mass balance gradient.
+Even with correct temperatures, integrated effects of albedo, wind, humidity,
+and cloud cover cause melt efficiency to decrease with elevation. MF_grad adds
+one parameter to capture this. Negative MF_grad = less melt at higher elevations.
+**Bounds:** [-0.01, 0.0] mm d-1 K-1 per m. Floor at 0.1 mm d-1 K-1.
+
+## D-009: Model Architecture Overhaul — v4
+
+**Date:** 2026-03-06
+**Decision:** Comprehensive model update implementing Phases 1-6 of project plan.
+**Changes:**
+  1. fast_model.py rewritten: statistical temp transfer, MF_grad, daily runoff tracking
+  2. config.py: monthly transfer coefficients, stake config, routing/dynamics defaults
+  3. glacier_dynamics.py: delta-h parameterization (Huss et al. 2010)
+  4. routing.py: parallel linear reservoir discharge model
+  5. run_projection.py: future projection framework with peak water analysis
+  6. run_calibration_full.py: v4 using raw Nuka input, 8 params
+**Parameter set (8):** MF, MF_grad, r_snow, r_ice, internal_lapse, precip_grad,
+  precip_corr, T0
