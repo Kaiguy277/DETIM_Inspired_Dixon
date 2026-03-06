@@ -139,9 +139,50 @@ physically reasonable values within existing bounds.
 | T0 (°C) | 0.5 | 3.0 |
 
 ### Results
-*Pending — run in progress*
+| Metric | Value |
+|--------|-------|
+| Final cost | 17.508 |
+| Convergence | NO (hit maxiter) |
+| Total evaluations | 13,737 |
+| Wall time | 3,544 s (59.1 min) |
 
-### Output files (expected)
+| Parameter | Best | At bound? |
+|-----------|------|-----------|
+| MF (mm/d/K) | 1.631 | Near lower |
+| r_snow | 0.000026 | YES (lower) |
+| r_ice | 0.00299 | YES (upper) |
+| lapse_rate (°C/m) | -0.00350 | YES (upper) |
+| precip_grad (frac/m) | 0.00598 | YES (upper) |
+| precip_corr | 2.446 | No — mid-range |
+| T0 (°C) | 0.502 | YES (lower) |
+
+### Validation
+| Target | Modeled | Observed | Residual |
+|--------|---------|----------|----------|
+| ABL 2023 annual | -4.07 | -4.50 | +0.43 |
+| ABL 2024 annual | -1.67 | -2.63 | +0.96 |
+| ELA 2023 annual | -1.55 | +0.10 | -1.65 |
+| ELA 2024 annual | +0.36 | +0.10 | +0.26 |
+| ACC 2023 annual | +0.66 | +0.37 | +0.29 |
+| ACC 2024 annual | +2.33 | +1.46 | +0.87 |
+| Geodetic 2000-2010 | -0.53 | -1.07 | +0.54 |
+| Geodetic 2010-2020 | -1.62 | -0.81 | -0.82 |
+| Geodetic 2000-2020 | -1.07 | -0.94 | -0.14 |
+
+### Assessment
+**IMPROVED but still problematic.** precip_corr moved off bounds (2.45, mid-range)
+confirming D-006 fix was correct. But 4/7 params still at bounds:
+- lapse_rate at -3.5°C/km (upper bound) — unrealistically shallow
+- r_snow ≈ 0 and r_ice at max — extreme snow/ice melt contrast
+- T0 = 0.5°C (lower) and precip_grad = 0.006 (upper) — maximizing snow
+- ELA residuals large — model can't simultaneously fit ABL melt and ELA accumulation
+- Geodetic decades flip-flopped: under-melts 2000-2010, over-melts 2010-2020
+
+Root issue likely: model needs a way to differentiate elevation-dependent melt
+beyond a single lapse rate. Or the climate data has non-stationarity issues.
+
+### Output files
 - `calibration_output/best_params_v3.json`
 - `calibration_output/calibration_log_v3.csv`
 - `calibration_output/calibration_summary_v3.json`
+- `calibration_output/calibration_v3_stdout.log`

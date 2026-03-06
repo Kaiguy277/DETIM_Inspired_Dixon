@@ -1,0 +1,32 @@
+{
+  "version": 3,
+  "fixes": [
+    "annual/geodetic runs: winter_swe=0 (no double-counting)",
+    "snow_redist removed (redundant with precip_corr)",
+    "summer runs: observed winter SWE as init",
+    "station_elev corrected: 1230m -> 804m (D-006)"
+  ],
+  "success": false,
+  "message": "Maximum number of iterations has been exceeded.",
+  "cost": 17.508323234754098,
+  "n_evaluations": 13737,
+  "wall_time_s": 3544.0283563137054,
+  "params": {
+    "MF": 1.630600715952144,
+    "r_snow": 2.574032025265226e-05,
+    "r_ice": 0.002992045149852318,
+    "lapse_rate": -0.0035,
+    "precip_grad": 0.0059783795143990666,
+    "precip_corr": 2.4460438261265267,
+    "T0": 0.5024210046286779
+  },
+  "config": {
+    "grid_res": 100.0,
+    "de_maxiter": 120,
+    "de_popsize": 15,
+    "w_stake_annual": 1.0,
+    "w_stake_summer": 0.6,
+    "w_geodetic": 0.4,
+    "w_physics": 0.3
+  }
+}
