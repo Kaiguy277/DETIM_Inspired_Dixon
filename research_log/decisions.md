@@ -101,3 +101,28 @@ over the 426m discrepancy). This caused:
 **Fix:** Set `CLIMATE_REF_ELEV = 804.0` in config.py and pass it (not SNOTEL_ELEV)
 to FastDETIM. This is a one-line change in `run_calibration_full.py`.
 **Evidence:** v2 calibration mid-run still shows MF≈1.0, precip_corr≈6.0, cost≈15.87
+
+## D-007: Nuka→Dixon Temperature Transfer Is Invalid
+
+**Date:** 2026-03-06
+**Decision:** Replace simple lapse rate temperature transfer with statistical
+downscaling based on empirical Nuka↔Dixon relationship.
+**Analysis:** See `research_log/nuka_dixon_temperature_analysis.md` for full details.
+
+**Key finding:** Dixon AWS (804m, on-glacier) is **5.10°C colder** than Nuka
+SNOTEL (1230m, off-glacier) during summer overlap (n=256 days). Dixon is colder
+100% of the time despite being 426m lower in elevation. This is katabatic
+cooling — cold glacier surface air draining downslope creates a persistent
+temperature inversion.
+
+**Quantified bias:** The merged climate data uses -6.5°C/km to adjust Nuka to
+Dixon elevation, adding +2.77°C. True relationship is -5.10°C. Net bias:
+**+7.87°C too warm** at glacier surface during summer. This is the actual root
+cause of all calibration failures (not D-005 or D-006, though both were also bugs).
+
+**Regression:** T_dixon = 0.695 × T_nuka + (-2.650), R²=0.696
+- Slope < 1 → glacier dampens temperature variability
+- Relationship varies by month (Aug most dampened: slope=0.39)
+
+**Plan:** Implement monthly statistical transfer in temperature.py, re-calibrate.
+See `research_log/project_plan.md` Phase 1 for implementation details.
