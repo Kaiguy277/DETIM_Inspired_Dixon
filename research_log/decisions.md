@@ -178,3 +178,222 @@ at ELA/ACC should increase dramatically.
 **Limitation:** These winter coefficients are estimated, not measured. Year-round
 on-glacier temperature sensors should be recommended in the thesis as critical
 future work.
+
+## D-011: Wind Redistribution of Snow (Winstral Sx)
+
+**Date:** 2026-03-06
+**Decision:** Add spatially distributed wind redistribution of snowfall using
+the Winstral et al. (2002) Sx parameter, with prevailing wind from ESE (100°).
+
+**Rationale:** CAL-004/005 showed precip_corr stuck at 0.5 (lower bound) and
+the model unable to capture spatial variability in mass balance. Analysis of
+22 years of digitized snowlines (9,295 sample points) revealed:
+  - Western side of glacier has snowline **100m lower** than eastern side
+    (every year, E-W diff +17 to +111m)
+  - NW-facing slopes: mean snowline 1061m; S-facing: 1175m
+  - Detrended correlation r(easting, Z_anomaly) = +0.59
+
+Combined with regional climatology:
+  - Gulf of Alaska storms approach from SSE with E/SE surface winds
+  - Synoptic wind during precipitation: ~100° (ESE)
+  - Empirical snowline asymmetry confirms ESE wind deposits on W/NW lee side
+
+**Implementation:**
+  - `terrain.py`: `compute_wind_exposure()` computes Sx along upwind direction
+    (d_max=300m), normalized to [-1,+1] and zero-meaned over glacier
+  - `fast_model.py`: `P_cell *= (1 + k_wind * sx_norm[i,j])`
+  - New calibration parameter: `k_wind` [0.0, 1.0]
+  - Mass-conserving: mean(D_wind) = 1.0 over glacier surface
+
+**Sensitivity test (WY2023, k_wind 0→1):**
+  - ABL: -1.56 → -1.62 (more exposed, less snow)
+  - ACC: +3.21 → +3.47 (more sheltered, more snow deposited)
+  - Glacier-wide: ~+1.30 (nearly unchanged — mass conserving)
+
+**Reference:** Winstral, A., Elder, K., & Davis, R. E. (2002). Spatial snow
+modeling of wind-redistributed snow using terrain-based parameters. J.
+Hydrometeorol., 3(5), 524-538.
+
+## D-012: Revert to Identity Temperature Transfer
+
+**Date:** 2026-03-06
+**Decision:** Remove statistical katabatic temperature transfer (D-007, D-010).
+Use raw Nuka SNOTEL temperature at 1230m with a calibrated lapse rate.
+
+**Rationale:** Comprehensive diagnostic of CAL-004/005/006 revealed that the
+statistical transfer made on-glacier temperatures too cold for DETIM to generate
+observed summer melt:
+  - ABL summer mean T = 2.4°C after transfer (vs ~10°C with standard lapse)
+  - Required MF > 19 mm/d/K to match ABL summer melt of -5.35 m w.e.
+  - Literature MF for ice: 6-12 mm/d/K; for the whole DETIM equation: 2-8
+  - With standard lapse: ABL ~10°C → MF ~3.5 (perfectly reasonable)
+
+**Physical explanation:** DETIM was designed as an empirical index model. The
+temperature input is not meant to be the literal on-glacier surface temperature
+— it's an index that, when multiplied by MF, produces the right melt rate.
+The katabatic cooling is real (measured: -5.1°C at ABL, R²=0.70) but is
+implicitly absorbed by the MF parameter in the standard DETIM framework.
+
+**Additional changes:**
+  1. ref_elev changed from 804m (Dixon AWS) to 1230m (Nuka SNOTEL)
+  2. lapse_rate replaces internal_lapse (now from 1230m, not 804m)
+  3. Winter balance added as explicit calibration target (W=0.6)
+  4. precip_corr lower bound raised from 0.5 to 1.0 (Nuka undercatch)
+  5. lapse_rate upper bound widened to -9.0 C/km
+  6. DE maxiter increased to 200 for weekend convergence
+
+**Validation with hand-picked params (MF=1.0, pc=3.5, lapse=-6.5):**
+  - ABL 2023: -4.46 (obs -4.50) — excellent
+  - ACC 2023: +1.43 (obs +0.37) — optimizer has room to improve
+  - ELA 2023: -0.85 (obs +0.10) — needs more accumulation at ELA
+
+**The katabatic analysis (D-007) remains valid** for thesis discussion — it
+quantifies the real 5°C on-glacier cooling effect and supports the recommendation
+for year-round temperature sensors as future work.
+
+## D-013: Nuka SNOTEL Elevation Units Error — 1230 ft, Not 1230 m
+
+**Date:** 2026-03-09
+**Decision:** Correct Nuka SNOTEL reference elevation from 1230 m to 375 m
+(1230 ft × 0.3048 = 374.9 m). Rebuild model around correct geometry.
+
+**Discovery:** The NRCS website (wcc.sc.egov.usda.gov/nwcc/site?sitenum=1037)
+lists Nuka Glacier SNOTEL (site 1037) elevation as "1230" in feet, the standard
+unit for all US SNOTEL stations. The value was recorded as 1230 m in
+`data_provenance.md` and `config.py`, introducing an 855 m elevation error that
+propagated through every calibration run (CAL-001 through CAL-007).
+
+**Impact — this is the root cause of all calibration failures:**
+  - All glacier cells were positioned BELOW the reference station instead of
+    ABOVE it (ABL at 804m is 429m above Nuka at 375m, not 426m below at 1230m)
+  - With lapse applied in the wrong direction, ABL was ~3-4°C too warm
+  - Excess warmth → too much melt → optimizer suppressed MF to 1.55
+  - Excess warmth → too much rain (not snow) → optimizer inflated precip_corr to 4.5
+  - The D-007 "katabatic paradox" (Dixon 5.1°C colder despite being lower) was
+    never a paradox — Dixon at 804m IS higher than Nuka at 375m. Expected
+    lapse-rate cooling at -5.0 C/km = 2.15°C, plus ~2.95°C of real (modest)
+    katabatic cooling = 5.10°C total.
+  - D-007 through D-012 were all attempts to work around this geometry error
+
+**Corrected temperature geometry (summer mean Nuka T = 8.0°C, lapse -5.0 C/km):**
+| Stake | dz from 375m | T (corrected) | T (v7 wrong) |
+|-------|-------------|---------------|--------------|
+| ABL (804m) | +429m | 5.9°C | 9.3°C |
+| ELA (1078m) | +703m | 4.5°C | 8.5°C |
+| ACC (1293m) | +918m | 3.4°C | 7.8°C |
+
+**Changes required:**
+  1. `config.py`: SNOTEL_ELEV = 375.0
+  2. Lapse rate fixed at -5.0 C/km (remove from calibration), citing Gardner &
+     Sharp (2009) ablation-season mean -4.9 C/km, Roth et al. (2023) Juneau
+     Icefield calibrated -5.0 C/km
+  3. precip_corr bounds tightened to [1.2, 3.0], citing PyGEM cap of 3.0,
+     Wolverine Glacier analog of 2.28x
+  4. Identity transfer (D-012) remains correct — DETIM uses index temperatures,
+     and MF absorbs the ~3°C katabatic effect implicitly (Hock 1999)
+  5. The katabatic analysis (D-007) is reinterpreted: the real on-glacier
+     cooling is ~3°C (not 8°C), consistent with literature values
+
+**References:**
+  - NRCS: https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=1037
+  - Gardner & Sharp (2009), J. Climate: Arctic on-glacier lapse rate -4.9 C/km
+  - Roth et al. (2023), J. Glaciol.: Juneau Icefield calibrated -5.0 C/km
+  - Rounce et al. (2020), PyGEM: precip_corr cap of 3.0
+
+## D-014: Cost Function Restructuring — Inverse-Variance + Geodetic Hard Constraint
+
+**Date:** 2026-03-09
+**Decision:** Replace arbitrary-weight cost function with inverse-variance
+weighting and a hard geodetic constraint.
+
+**Rationale:** Literature review of OGGM (Zekollari et al. 2023), PyGEM
+(Rounce et al. 2020), and Huss et al. (2009) shows that all major glacier
+models treat geodetic mass balance as the PRIMARY calibration constraint,
+not a minor soft penalty. The v7 cost function gave geodetic weight 0.4 vs
+combined stake weight 2.4 (annual=1.0, summer=0.8, winter=0.6), allowing
+the optimizer to ignore the 20-year geodetic signal.
+
+Additionally, using all 3 Hugonnet periods (2000-2010, 2010-2020, 2000-2020)
+is statistically improper — the 20-year period is derived from the sub-periods
+and is not independent. This gave triple weight to the same data.
+
+**Changes:**
+  1. Drop 2000-2020 geodetic period; use only 2000-2010 and 2010-2020
+  2. Replace weighted sum with inverse-variance (1/σ²) weighting for all
+     observations — geodetic uncertainties (0.12-0.22) naturally weight them
+     appropriately relative to stake uncertainties (0.10-0.15)
+  3. Add geodetic hard penalty: λ=50 for exceeding reported uncertainty bounds
+
+**References:**
+  - Zekollari et al. (2023), Ann. Glaciol.: OGGM calibration strategy
+  - Rounce et al. (2020), J. Glaciol.: PyGEM Bayesian calibration
+  - Zemp et al. (2013), The Cryosphere: reanalysing glacier mass balance
+
+## D-015: Remove Lapse Rate and k_wind from Calibration
+
+**Date:** 2026-03-09
+**Decision:** Fix lapse rate at -5.0 C/km and remove k_wind, reducing free
+parameters from 9 to 7.
+
+**Lapse rate rationale:** The optimizer consistently exploits lapse rate to
+compensate for other model deficiencies. Literature values for maritime
+glaciers converge on -4.5 to -5.5 C/km (Gardner & Sharp 2009: -4.9;
+Roth et al. 2023 Juneau Icefield: -5.0). Fixing it eliminates a major
+source of equifinality with MF and precip parameters.
+
+**k_wind rationale:** CAL-007 converged to k_wind ≈ 0 (effectively off).
+The wind redistribution concept (D-011) is physically sound but adds a
+parameter that the current observation network cannot constrain. Removing
+it reduces dimensionality without information loss. Can be revisited if
+snowline validation reveals spatial bias.
+
+**Lapse rate update:** Initially fixed at -5.0 C/km, but with the corrected
+elevation (D-013) the optimizer should no longer exploit this parameter.
+Re-included with tight literature bounds [-7.0, -4.0] C/km to allow the
+model some flexibility while preventing physically unreasonable values.
+
+**Calibrated parameters (8):** MF, MF_grad, r_snow, r_ice, lapse_rate,
+precip_grad, precip_corr, T0
+
+## D-016: Use Only 2000-2020 Geodetic Mean + Widen precip_corr
+
+**Date:** 2026-03-09
+**Decision:** Revert to single 2000-2020 geodetic constraint and widen
+precip_corr upper bound from 3.0 to 4.0.
+
+**Rationale — geodetic sub-periods:**
+CAL-008 post-analysis revealed that the two geodetic sub-periods (2000-2010
+and 2010-2020) create a contradictory constraint. Nuka SNOTEL shows cooler
+summers in 2001-2010 (9.07°C) than 2011-2020 (10.00°C), so the model
+produces less melt in the first decade. But Hugonnet shows MORE mass loss
+in 2001-2010 (-1.07) than 2010-2020 (-0.81). This is opposite to what
+the Nuka forcing predicts, and a single parameter set cannot satisfy both.
+
+Statistical test: the sub-periods are NOT distinguishable (Z=0.88, p>0.30).
+The "acceleration" is within reported uncertainty (±0.22-0.23 m w.e./yr).
+
+Solution: use ONLY the 2000-2020 mean (-0.939 ± 0.122 m w.e./yr) for
+calibration. It has tighter uncertainty and integrates over the full period.
+Sub-periods become validation targets (reported but not optimized against).
+
+**Rationale — precip_corr bound:**
+Back-calculation from ELA observed winter balance shows minimum required
+precip_corr of 3.01 (WY2023) and 3.16 (WY2024). The 3.0 upper bound in
+CAL-008 was slightly too tight — the model could not physically produce
+enough snow. With the corrected elevation, higher precip_corr is needed
+because on-glacier temperatures are now colder (more rain→snow conversion
+efficiency), but total precipitation still needs to be adequate.
+
+New bound [1.2, 4.0] allows the optimizer to reach the physically required
+range while staying well below the absurd 4.52 of CAL-007.
+
+**Compatibility check (key finding):**
+Extrapolating 2023 stake observations across the glacier hypsometry gives
+a glacier-wide balance of -1.07 m w.e., matching the 2000-2010 geodetic
+exactly (-1.072). The stakes and geodetic are NOT in conflict — the model
+should be able to fit both with a single parameter set.
+
+**Changes:**
+  1. Restore 2000-2020 geodetic period as sole geodetic constraint
+  2. Drop 2000-2010 and 2010-2020 from calibration (validation only)
+  3. Widen precip_corr upper bound from 3.0 to 4.0

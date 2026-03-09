@@ -15,32 +15,35 @@ ELEV_MAX = 1637.0       # m, approximate glacier headwall
 GLACIER_AREA_KM2 = 40.1
 
 # ── Climate station (Nuka SNOTEL, site 1037) ────────────────────────
-SNOTEL_ELEV = 1230.0    # m, Nuka SNOTEL actual elevation
+SNOTEL_ELEV = 375.0     # m (1230 ft; D-013: NRCS reports in feet, not meters)
 SNOTEL_LAT = 59.698     # from NRCS metadata
 SNOTEL_LON = -150.712   # from NRCS metadata
 
 # ── Dixon on-glacier AWS ────────────────────────────────────────────
 DIXON_AWS_ELEV = 804.0  # m, near ABL stake
 
-# ── Nuka → Dixon temperature transfer (D-007) ──────────────────────
-# Statistical downscaling from off-glacier SNOTEL to on-glacier surface.
-# T_glacier_ref = TRANSFER_ALPHA[month] * T_nuka + TRANSFER_BETA[month]
-# Summer (May-Sep): derived from 256-day overlap (2024-2025 summers).
-# Winter (Oct-Apr): reduced katabatic correction (D-010). Estimated, not
-# measured — year-round sensors needed for validation.
-# See research_log/nuka_dixon_temperature_analysis.md, cal004_diagnosis.md
-TRANSFER_ALPHA = np.array([
-    0.85,   0.85,   0.85,   0.85,    # Jan-Apr: reduced katabatic (D-010)
-    0.667,  0.534,  0.574,  0.391,   # May-Aug: measured katabatic
-    1.211,                            # Sep: measured transition
-    0.85,   0.85,   0.85,            # Oct-Dec: reduced katabatic (D-010)
-])
-TRANSFER_BETA = np.array([
-    1.0,    1.0,    1.0,    1.0,     # Jan-Apr: reduced katabatic (D-010)
-   -2.77,  -1.27,  -1.29,   0.56,   # May-Aug: measured
-   -7.06,                            # Sep: measured
-    1.0,    1.0,    1.0,             # Oct-Dec: reduced katabatic (D-010)
-])
+# ── Temperature transfer (D-012) ─────────────────────────────────
+# Identity transfer: use raw Nuka SNOTEL temperature at 1230m.
+# The calibrated lapse rate handles elevation adjustment to each cell.
+#
+# Rationale (D-012): The statistical katabatic transfer (D-007, D-010)
+# made on-glacier temperatures too cold for DETIM to generate observed
+# summer melt. ABL summer mean was 2.4C, requiring MF > 19 mm/d/K.
+# DETIM is designed for off-glacier index temperatures with MF absorbing
+# the katabatic effect implicitly (Hock 1999). With identity transfer,
+# standard lapse gives ABL summer ~10C → MF ~3.5 (literature range).
+#
+# The measured katabatic effect (-5.1C at ABL, R2=0.70) is real and should
+# be discussed in the thesis as validation, not used for forcing.
+TRANSFER_ALPHA = np.ones(12, dtype=np.float64)   # identity: T_ref = T_nuka
+TRANSFER_BETA = np.zeros(12, dtype=np.float64)    # no offset
+
+# ── Wind redistribution (D-011) ───────────────────────────────────
+# Prevailing wind during precipitation: ESE (~100 deg), from Gulf of
+# Alaska storm analysis + snowline asymmetry (west side 100m lower).
+# Sx parameter (Winstral et al. 2002) computed along upwind direction.
+WIND_AZIMUTH = 100.0       # degrees CW from N, direction wind comes FROM
+WIND_SEARCH_DIST = 300.0   # meters, max upwind search distance for Sx
 
 # ── Stake locations ─────────────────────────────────────────────────
 STAKE_NAMES = ['ABL', 'ELA', 'ACC']
@@ -53,9 +56,9 @@ DEFAULT_PARAMS = dict(
     MF_grad=-0.002,      # melt factor gradient, mm d-1 K-1 per m elevation
     r_snow=0.3e-3,       # radiation factor for snow, mm m2 W-1 d-1 K-1
     r_ice=0.6e-3,        # radiation factor for ice
-    internal_lapse=-5.5e-3,  # on-glacier lapse rate, C/m
+    internal_lapse=-5.0e-3,  # lapse rate C/m, fixed D-015 (Gardner & Sharp 2009)
     precip_grad=0.0005,  # fractional increase per meter elevation
-    precip_corr=2.5,     # gauge undercatch + spatial transfer correction
+    precip_corr=2.0,     # gauge undercatch + spatial transfer (D-013: bounded 1.2-3.0)
     T0=1.5,              # rain/snow threshold temperature, C
 )
 

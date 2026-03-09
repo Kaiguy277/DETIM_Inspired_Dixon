@@ -46,6 +46,7 @@ def run_simulation(
     ipot_lookup,     # 3D: (365, nrows, ncols)
     glacier_mask,    # bool
     firn_mask,       # bool
+    sx_norm,         # 2D: normalized wind exposure [-1, +1]
     # Temperature transfer coefficients
     transfer_alpha,  # 1D, length 12 (monthly slope)
     transfer_beta,   # 1D, length 12 (monthly intercept)
@@ -59,6 +60,7 @@ def run_simulation(
     precip_grad,
     precip_corr,
     T0,
+    k_wind,          # wind redistribution strength (0 = off, ~0.3 typical)
     nodata,
     # Initial state
     swe_init,        # 2D array
@@ -142,8 +144,11 @@ def run_simulation(
                 dz = elevation[i, j] - ref_elev
                 T_cell = T_ref + internal_lapse * dz
 
-                # Precipitation at this cell
-                P_cell = P_nuka_t * precip_corr * (1.0 + precip_grad * dz)
+                # Precipitation at this cell (with wind redistribution)
+                wind_factor = 1.0 + k_wind * sx_norm[i, j]
+                if wind_factor < 0.05:
+                    wind_factor = 0.05
+                P_cell = P_nuka_t * precip_corr * (1.0 + precip_grad * dz) * wind_factor
                 if P_cell < 0:
                     P_cell = 0.0
 
@@ -263,6 +268,9 @@ class FastDETIM:
         self.ref_elev = ref_elev
         self.cell_size = grid['cell_size']
 
+        # Wind redistribution (Sx normalized)
+        self.sx_norm = grid.get('sx_norm', np.zeros_like(self.elevation)).astype(np.float64)
+
         # Transfer coefficients
         self.transfer_alpha = transfer_alpha.astype(np.float64)
         self.transfer_beta = transfer_beta.astype(np.float64)
@@ -315,6 +323,7 @@ class FastDETIM:
             self.ipot_3d,
             self.glacier_mask,
             self.firn_mask,
+            self.sx_norm,
             self.transfer_alpha,
             self.transfer_beta,
             self.ref_elev,
@@ -326,6 +335,7 @@ class FastDETIM:
             params['precip_grad'],
             params['precip_corr'],
             params['T0'],
+            params.get('k_wind', 0.0),
             self.nodata,
             swe_init,
             self.stake_elevs,

@@ -1,0 +1,37 @@
+{
+  "version": 7,
+  "fixes": [
+    "Identity temp transfer: raw Nuka T at 1230m (D-012)",
+    "Calibrated lapse rate from 1230m to each cell",
+    "Winter balance as explicit calibration target",
+    "precip_corr lower bound = 1.0 (Nuka undercatch)",
+    "Wind redistribution via Sx parameter, ESE 100deg (D-011)",
+    "Extended run: 200 iterations"
+  ],
+  "success": true,
+  "message": "Optimization terminated successfully.",
+  "cost": 17.03511538379243,
+  "n_evaluations": 20050,
+  "wall_time_s": 6507.764646291733,
+  "params": {
+    "MF": 1.5543345355629234,
+    "MF_grad": -0.0034639178016971604,
+    "r_snow": 0.0014984068592322126,
+    "r_ice": 0.002998855135767972,
+    "lapse_rate": -0.003,
+    "precip_grad": 0.0002,
+    "precip_corr": 4.524324435612199,
+    "T0": 2.209331364575033,
+    "k_wind": 0.0005374028682708476
+  },
+  "config": {
+    "grid_res": 100.0,
+    "de_maxiter": 200,
+    "de_popsize": 15,
+    "w_stake_annual": 1.0,
+    "w_stake_summer": 0.8,
+    "w_stake_winter": 0.6,
+    "w_geodetic": 0.4,
+    "w_physics": 0.3
+  }
+}

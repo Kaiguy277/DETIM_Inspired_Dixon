@@ -117,6 +117,87 @@ def load_glacier_outline_mask(geojson_path, dem_info):
     return mask.astype(bool)
 
 
+def compute_wind_exposure(elevation, cell_size, wind_azimuth_deg, d_max=300.0):
+    """Compute Winstral et al. (2002) Sx wind exposure parameter.
+
+    Sx(i,j) = max angle to the horizon along the upwind direction, searched
+    up to d_max meters.  Positive Sx = sheltered (lee), negative = exposed.
+
+    Parameters
+    ----------
+    elevation : 2D array (m)
+    cell_size : float (m)
+    wind_azimuth_deg : float, direction wind comes FROM (degrees CW from N)
+    d_max : float, maximum search distance (m)
+
+    Returns
+    -------
+    sx : 2D array, same shape as elevation.  Positive = sheltered, negative = exposed.
+    """
+    nrows, ncols = elevation.shape
+    sx = np.full((nrows, ncols), -90.0, dtype=np.float64)
+
+    # Direction the wind blows FROM → upwind search vector
+    az_rad = np.radians(wind_azimuth_deg)
+    # Step in row/col: wind from N (0°) means search upward (negative row)
+    dr = -np.cos(az_rad)  # row increment per meter
+    dc = np.sin(az_rad)   # col increment per meter
+
+    n_steps = int(d_max / cell_size) + 1
+
+    for i in range(nrows):
+        for j in range(ncols):
+            z0 = elevation[i, j]
+            if z0 <= 0 or z0 > 5000:
+                sx[i, j] = 0.0
+                continue
+            max_angle = -90.0
+            for s in range(1, n_steps + 1):
+                dist = s * cell_size
+                ri = int(round(i + dr * dist / cell_size))
+                ci = int(round(j + dc * dist / cell_size))
+                if ri < 0 or ri >= nrows or ci < 0 or ci >= ncols:
+                    break
+                zt = elevation[ri, ci]
+                if zt <= 0 or zt > 5000:
+                    continue
+                angle = np.degrees(np.arctan2(zt - z0, dist))
+                if angle > max_angle:
+                    max_angle = angle
+            sx[i, j] = max_angle
+
+    return sx
+
+
+def compute_wind_redistribution(sx, glacier_mask):
+    """Convert Sx to a precipitation redistribution factor.
+
+    D_wind(i,j) = 1 + k * Sx_normalized
+
+    where Sx is normalized to [-1, +1] over glacier cells.
+    Positive Sx (sheltered) → D > 1 (more snow).
+    Negative Sx (exposed) → D < 1 (less snow).
+    The factor is mass-conserving over the glacier: mean(D * area) = area.
+
+    Returns
+    -------
+    sx_norm : 2D array, Sx normalized to approx [-1, +1] over glacier.
+    """
+    glacier_sx = sx[glacier_mask]
+    if len(glacier_sx) == 0:
+        return np.zeros_like(sx)
+
+    # Normalize: divide by max absolute value so range is roughly [-1, 1]
+    max_abs = np.maximum(np.abs(glacier_sx).max(), 1e-6)
+    sx_norm = sx / max_abs
+
+    # Zero-center over glacier (so mean redistribution = 0 → mass conserving)
+    glacier_mean = sx_norm[glacier_mask].mean()
+    sx_norm -= glacier_mean
+
+    return sx_norm
+
+
 def prepare_grid(dem_path, glacier_geojson_path, target_res=None):
     """Full grid preparation pipeline.
 
@@ -141,11 +222,17 @@ def prepare_grid(dem_path, glacier_geojson_path, target_res=None):
     # Ensure glacier cells have valid elevation
     glacier_mask = glacier_mask & (elev != config.NODATA)
 
+    # Wind exposure (Sx) for snow redistribution
+    sx = compute_wind_exposure(elev, cell_size, config.WIND_AZIMUTH,
+                               d_max=config.WIND_SEARCH_DIST)
+    sx_norm = compute_wind_redistribution(sx, glacier_mask)
+
     return dict(
         elevation=elev,
         slope=slope,
         aspect=aspect,
         glacier_mask=glacier_mask,
+        sx_norm=sx_norm,
         cell_size=cell_size,
         **{k: v for k, v in dem_info.items() if k != 'elevation'},
     )

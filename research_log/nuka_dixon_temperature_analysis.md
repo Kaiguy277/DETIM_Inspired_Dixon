@@ -5,40 +5,48 @@
 
 ## Overview
 
-Comparison of Nuka Glacier SNOTEL (1230m, off-glacier) with Dixon Glacier
-on-glacier AWS (804m, at ABL stake) during overlap periods (256 days,
-2024-04-30 to 2025-09-23, summer seasons only).
+Comparison of Nuka Glacier SNOTEL (**375 m** = 1230 ft; corrected D-013) with
+Dixon Glacier on-glacier AWS (804m, at ABL stake) during overlap periods
+(256 days, 2024-04-30 to 2025-09-23, summer seasons only).
 
-## Key Finding: Inverted Temperature Profile
+**CORRECTION (D-013):** The original analysis assumed Nuka at 1230 m. The
+NRCS lists Nuka at 1230 feet = 375 m. Dixon AWS (804 m) is 429 m ABOVE
+Nuka, not 426 m below. The "inverted temperature profile" was an artifact
+of the units error.
 
-**Dixon (804m) is COLDER than Nuka (1230m) 100% of the time during summer.**
+## Key Finding: Normal Lapse + Modest Katabatic Cooling
 
-| Metric | Nuka (1230m) | Dixon (804m) |
+**Dixon (804m) is 5.10°C colder than Nuka (375m), consistent with lapse-rate
+cooling (429m × -5.0 C/km = -2.15°C) plus ~3°C of real katabatic cooling.**
+
+| Metric | Nuka (375m) | Dixon (804m) |
 |--------|-------------|-------------|
 | Mean TAVG | 8.03°C | 2.93°C |
 | ΔT (Dixon - Nuka) | — | -5.10°C |
-| Expected ΔT at -6.5°C/km | — | +2.77°C |
-| Actual bias | — | **+7.87°C too warm in model** |
+| Expected ΔT at -5.0°C/km for +429m | — | -2.15°C |
+| Katabatic residual | — | **-2.95°C** |
 
-This is the **katabatic cooling effect** — cold air draining off the glacier
-ice surface creates a persistent temperature inversion in the boundary layer.
+The katabatic effect is real but modest (~3°C, not ~8°C as originally
+reported). This is consistent with on-glacier cooling measured at other
+maritime glaciers (Gardner & Sharp 2009). In the DETIM framework, this
+cooling is implicitly absorbed by the calibrated melt factor (Hock 1999).
 
-## Monthly Lapse Rates
+## Monthly Temperature Differences (corrected D-013)
 
-All implied "lapse rates" are inverted (temperature decreases going downhill
-onto the glacier):
+With Nuka at 375m and Dixon at 804m (dz = +429m), a -5.0 C/km lapse
+predicts -2.15°C. Residuals represent true katabatic cooling:
 
-| Month | Nuka °C | Dixon °C | ΔT | Implied lapse (°C/km) | n |
-|-------|---------|----------|------|-----------------------|---|
-| May | 3.27 | -0.59 | -3.86 | 9.06 | 51 |
-| Jun | 8.34 | 3.18 | -5.16 | 12.11 | 59 |
-| Jul | 9.90 | 4.39 | -5.51 | 12.92 | 44 |
-| Aug | 10.33 | 4.59 | -5.74 | 13.47 | 57 |
-| Sep | 8.41 | 3.12 | -5.29 | 12.41 | 44 |
+| Month | Nuka °C | Dixon °C | ΔT | Lapse pred | Katabatic residual | n |
+|-------|---------|----------|------|-----------|-------------------|---|
+| May | 3.27 | -0.59 | -3.86 | +1.12 | -1.71 | 51 |
+| Jun | 8.34 | 3.18 | -5.16 | +6.20 | -3.02 | 59 |
+| Jul | 9.90 | 4.39 | -5.51 | +7.76 | -3.37 | 44 |
+| Aug | 10.33 | 4.59 | -5.74 | +8.19 | -3.60 | 57 |
+| Sep | 8.41 | 3.12 | -5.29 | +6.27 | -3.15 | 44 |
 
-The katabatic effect is **strongest in warmest months** (Aug: 13.5°C/km
-inverted) when the temperature difference between ambient air and glacier
-surface is greatest.
+The katabatic residual (1.7-3.6°C) is consistent with other maritime glaciers.
+It is strongest in warmest months when the glacier surface–air temperature
+gradient is greatest, as expected from katabatic wind theory.
 
 ## Linear Regression
 

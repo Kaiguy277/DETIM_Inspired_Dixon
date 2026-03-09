@@ -1,20 +1,23 @@
 """
-Comprehensive calibration of Dixon Glacier DETIM — v4.
+Comprehensive calibration of Dixon Glacier DETIM — v8.
 
-Major changes:
-  - Statistical temperature transfer from Nuka SNOTEL to on-glacier (D-007)
-  - Input is raw Nuka temperature (1230m), not pre-adjusted
-  - Elevation-dependent melt factor (Phase 3)
-  - internal_lapse replaces lapse_rate (on-glacier vertical gradient)
-  - 8 calibrated parameters
+Changes (D-013, D-014, D-015):
+  - SNOTEL elevation corrected: 1230 ft = 375 m (was 1230 m)
+  - Lapse rate fixed at -5.0 C/km (removed from calibration)
+  - k_wind removed (converged to ~0 in v7)
+  - precip_corr bounds tightened to [1.2, 3.0]
+  - r_ice upper bound widened to 5.0e-3
+  - Geodetic 2000-2020 dropped (not independent of sub-periods)
+  - Cost function: inverse-variance weighting with geodetic hard penalty
+  - 7 calibrated parameters
 
-See research_log/decisions.md and project_plan.md for full rationale.
-
-Calibration targets:
-  1. Stake mass balance at 3 elevations, 2023-2025
-  2. Geodetic mass balance (Hugonnet et al. 2021), 2000-2020
-  3. Physical constraint: r_ice > r_snow
+See research_log/decisions.md D-013 through D-015 for full rationale.
 """
+import sys
+import os
+os.environ['PYTHONUNBUFFERED'] = '1'
+sys.stdout.reconfigure(line_buffering=True)
+
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -34,30 +37,30 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 # ── DE Configuration ────────────────────────────────────────────────
 GRID_RES = 100.0
-DE_MAXITER = 80
+DE_MAXITER = 200
 DE_POPSIZE = 15
 DE_SEED = 42
 DE_TOL = 1e-4
 DE_MUTATION = (0.5, 1.0)
 DE_RECOMBINATION = 0.7
 
-# Objective weights
-W_STAKE_ANNUAL = 1.0
-W_STAKE_SUMMER = 0.6
-W_GEODETIC = 0.4
-W_PHYSICS = 0.3
+# Fixed parameters (D-015)
+FIXED_K_WIND = 0.0          # Off; converged to ~0 in CAL-007
 
-# Parameters and bounds (8 params)
-PARAM_NAMES = ['MF', 'MF_grad', 'r_snow', 'r_ice', 'internal_lapse',
+# Geodetic hard constraint penalty (D-014)
+GEODETIC_LAMBDA = 50.0  # penalty multiplier when geodetic exceeds uncertainty
+
+# Parameters and bounds (8 params — k_wind fixed, lapse_rate bounded)
+PARAM_NAMES = ['MF', 'MF_grad', 'r_snow', 'r_ice', 'lapse_rate',
                'precip_grad', 'precip_corr', 'T0']
 PARAM_BOUNDS = [
     (1.0, 12.0),            # MF (mm d-1 K-1)
     (-0.01, 0.0),           # MF_grad (mm d-1 K-1 per m; negative = less melt higher)
     (0.02e-3, 1.5e-3),      # r_snow
-    (0.05e-3, 3.0e-3),      # r_ice
-    (-8.0e-3, -3.0e-3),     # internal_lapse (C/m, on-glacier)
+    (0.05e-3, 5.0e-3),      # r_ice (widened upper bound)
+    (-7.0e-3, -4.0e-3),     # lapse_rate (C/m; literature: -4 to -7 C/km)
     (0.0002, 0.006),        # precip_grad (fraction/m)
-    (0.5, 5.0),             # precip_corr
+    (1.2, 3.0),             # precip_corr (D-013: bounded by literature)
     (0.5, 3.0),             # T0 (C)
 ]
 
@@ -118,20 +121,23 @@ def prepare_period_arrays(climate, start_date, end_date):
 
 
 def build_calibration_targets(stakes, geodetic, climate):
-    """Build calibration targets with precomputed arrays."""
+    """Build calibration targets including winter balance."""
     targets = {
         'stake_annual': [],
         'stake_summer': [],
+        'stake_winter': [],
         'geodetic': [],
         'winter_swe_obs': {},
     }
 
+    # Collect winter SWE observations
     for _, row in stakes[stakes['period_type'] == 'winter'].iterrows():
         yr = row['year']
         if yr not in targets['winter_swe_obs']:
             targets['winter_swe_obs'][yr] = {}
         targets['winter_swe_obs'][yr][row['site_id']] = row['mb_obs_mwe'] * 1000
 
+    # Annual targets
     for _, row in stakes[stakes['period_type'] == 'annual'].iterrows():
         yr = row['year']
         is_estimated = 'estimated' in str(row.get('notes', '')).lower()
@@ -146,6 +152,7 @@ def build_calibration_targets(stakes, geodetic, climate):
             'unc': unc, 'arrays': wy_arrays, 'estimated': is_estimated,
         })
 
+    # Summer targets
     for _, row in stakes[stakes['period_type'] == 'summer'].iterrows():
         yr = row['year']
         is_estimated = 'estimated' in str(row.get('notes', '')).lower()
@@ -164,6 +171,24 @@ def build_calibration_targets(stakes, geodetic, climate):
             'obs_winter_swe_mm': obs_swe,
         })
 
+    # Winter targets (NEW in v7)
+    for _, row in stakes[stakes['period_type'] == 'winter'].iterrows():
+        yr = row['year']
+        is_estimated = 'estimated' in str(row.get('notes', '')).lower()
+        unc = row['mb_obs_uncertainty_mwe']
+        if is_estimated:
+            unc = max(unc, 0.3)
+        start_str = row['date_start'].strftime('%Y-%m-%d')
+        end_str = row['date_end'].strftime('%Y-%m-%d')
+        period_arrays = prepare_period_arrays(climate, start_str, end_str)
+        if period_arrays is None:
+            continue
+        targets['stake_winter'].append({
+            'site': row['site_id'], 'year': yr, 'obs': row['mb_obs_mwe'],
+            'unc': unc, 'arrays': period_arrays, 'estimated': is_estimated,
+        })
+
+    # Geodetic targets
     good_years = {}
     for wy_year in range(2001, 2021):
         wy_data = climate.loc[f'{wy_year-1}-10-01':f'{wy_year}-09-30']
@@ -178,6 +203,10 @@ def build_calibration_targets(stakes, geodetic, climate):
 
     for _, row in geodetic.iterrows():
         period = row['period']
+        # D-014: Skip 2000-2020 (not independent of sub-periods)
+        if period == '2000-01-01_2020-01-01':
+            print(f"    {period}: SKIPPED (not independent of sub-periods, D-014)")
+            continue
         start_str, end_str = period.split('_')
         start_year = pd.Timestamp(start_str).year
         end_year = pd.Timestamp(end_str).year
@@ -188,8 +217,10 @@ def build_calibration_targets(stakes, geodetic, climate):
         })
 
     print(f"\nCalibration targets:")
-    print(f"  Stake annual: {len(targets['stake_annual'])} ({len([t for t in targets['stake_annual'] if not t['estimated']])} measured)")
-    print(f"  Stake summer: {len(targets['stake_summer'])} ({len([t for t in targets['stake_summer'] if not t['estimated']])} measured)")
+    n_meas = lambda lst: len([t for t in lst if not t['estimated']])
+    print(f"  Stake annual: {len(targets['stake_annual'])} ({n_meas(targets['stake_annual'])} measured)")
+    print(f"  Stake summer: {len(targets['stake_summer'])} ({n_meas(targets['stake_summer'])} measured)")
+    print(f"  Stake winter: {len(targets['stake_winter'])} ({n_meas(targets['stake_winter'])} measured)")
     print(f"  Geodetic periods: {len(targets['geodetic'])}")
     for g in targets['geodetic']:
         print(f"    {g['period']}: {len(g['year_data'])} usable years")
@@ -197,12 +228,23 @@ def build_calibration_targets(stakes, geodetic, climate):
 
 
 def compute_objective(x, fmodel, targets):
-    """Multi-objective cost function with statistical temperature transfer."""
-    params = {name: val for name, val in zip(PARAM_NAMES, x)}
+    """Inverse-variance cost function with geodetic hard constraint (D-014).
 
+    Each observation is weighted by 1/sigma^2 (its reported uncertainty).
+    Geodetic observations that exceed their uncertainty bounds incur an
+    additional hard penalty (lambda * excess^2).
+    """
+    params = {name: val for name, val in zip(PARAM_NAMES, x)}
+    # Map lapse_rate -> internal_lapse for the model
+    params['internal_lapse'] = params.pop('lapse_rate')
+    params['k_wind'] = FIXED_K_WIND
+
+    # Physics penalty: r_ice should be >= r_snow
     penalty = 0.0
     if params['r_ice'] < params['r_snow']:
         penalty += 5.0 * (params['r_snow'] - params['r_ice']) / params['r_snow']
+
+    all_chi2 = []  # all (residual/sigma)^2 terms
 
     # ── Stake annual (Oct 1, SWE=0) ────────────────────────────────
     annual_by_year = {}
@@ -212,18 +254,15 @@ def compute_objective(x, fmodel, targets):
             annual_by_year[yr] = []
         annual_by_year[yr].append(tgt)
 
-    annual_errors = []
     for yr, tgts in annual_by_year.items():
         T, P, doy = tgts[0]['arrays']
         result = fmodel.run(T, P, doy, params, 0.0)
         for tgt in tgts:
             mod = result['stake_balances'].get(tgt['site'], np.nan)
             if not np.isnan(mod):
-                err = (mod - tgt['obs']) / tgt['unc']
-                annual_errors.append(err ** 2)
+                all_chi2.append(((mod - tgt['obs']) / tgt['unc']) ** 2)
 
     # ── Stake summer (observed winter SWE) ─────────────────────────
-    summer_errors = []
     for tgt in targets['stake_summer']:
         T, P, doy = tgt['arrays']
         obs_swe = tgt.get('obs_winter_swe_mm')
@@ -231,11 +270,26 @@ def compute_objective(x, fmodel, targets):
         result = fmodel.run(T, P, doy, params, winter_swe)
         mod = result['stake_balances'].get(tgt['site'], np.nan)
         if not np.isnan(mod):
-            err = (mod - tgt['obs']) / tgt['unc']
-            summer_errors.append(err ** 2)
+            all_chi2.append(((mod - tgt['obs']) / tgt['unc']) ** 2)
 
-    # ── Geodetic MB (Oct 1, SWE=0) ─────────────────────────────────
-    geodetic_errors = []
+    # ── Stake winter (Oct 1, SWE=0) ───────────────────────────────
+    winter_by_year = {}
+    for tgt in targets['stake_winter']:
+        yr = tgt['year']
+        if yr not in winter_by_year:
+            winter_by_year[yr] = []
+        winter_by_year[yr].append(tgt)
+
+    for yr, tgts in winter_by_year.items():
+        T, P, doy = tgts[0]['arrays']
+        result = fmodel.run(T, P, doy, params, 0.0)
+        for tgt in tgts:
+            mod = result['stake_balances'].get(tgt['site'], np.nan)
+            if not np.isnan(mod):
+                all_chi2.append(((mod - tgt['obs']) / tgt['unc']) ** 2)
+
+    # ── Geodetic MB (Oct 1, SWE=0) — with hard penalty ─────────────
+    geodetic_penalty = 0.0
     for gtgt in targets['geodetic']:
         if not gtgt['year_data']:
             continue
@@ -246,25 +300,26 @@ def compute_objective(x, fmodel, targets):
             annual_bals.append(result['glacier_wide_balance'])
         if annual_bals:
             mean_bal = np.mean(annual_bals)
-            err = (mean_bal - gtgt['obs']) / gtgt['unc']
-            geodetic_errors.append(err ** 2)
+            residual = mean_bal - gtgt['obs']
+            # Inverse-variance term (same as stakes)
+            all_chi2.append((residual / gtgt['unc']) ** 2)
+            # Hard penalty for exceeding uncertainty bounds
+            excess = max(0.0, abs(residual) - gtgt['unc'])
+            geodetic_penalty += GEODETIC_LAMBDA * (excess / gtgt['unc']) ** 2
 
-    J_annual = np.sqrt(np.mean(annual_errors)) if annual_errors else 10.0
-    J_summer = np.sqrt(np.mean(summer_errors)) if summer_errors else 10.0
-    J_geodetic = np.sqrt(np.mean(geodetic_errors)) if geodetic_errors else 10.0
+    if not all_chi2:
+        return 100.0
 
-    total = (W_STAKE_ANNUAL * J_annual
-             + W_STAKE_SUMMER * J_summer
-             + W_GEODETIC * J_geodetic
-             + W_PHYSICS * penalty)
+    # Total: sqrt of mean chi-squared + geodetic hard penalty + physics penalty
+    total = np.sqrt(np.mean(all_chi2)) + geodetic_penalty + penalty
     return total
 
 
 def main():
     t_start = time.time()
     print("=" * 70)
-    print("DIXON GLACIER DETIM — CALIBRATION v5")
-    print("Statistical temp transfer + winter katabatic correction (D-010)")
+    print("DIXON GLACIER DETIM — CALIBRATION v8")
+    print("Elevation fix + inv-variance cost + fixed lapse (D-013/014/015)")
     print("=" * 70)
 
     # ── Load data ───────────────────────────────────────────────────
@@ -288,13 +343,17 @@ def main():
     area_km2 = n_glacier * grid['cell_size']**2 / 1e6
     print(f"  Shape: {grid['elevation'].shape}, Glacier cells: {n_glacier}, Area: {area_km2:.1f} km2")
 
+    # Wind exposure stats
+    sx = grid['sx_norm'][grid['glacier_mask']]
+    print(f"  Sx_norm on glacier: min={sx.min():.3f}, max={sx.max():.3f}, std={sx.std():.3f}")
+
     print("\nPrecomputing potential direct radiation (365 DOYs)...")
     from dixon_melt.model import precompute_ipot
     t0 = time.time()
     ipot_table = precompute_ipot(grid, doy_range=range(1, 366), dt_hours=3.0)
     print(f"  Done in {time.time()-t0:.1f}s")
 
-    # ── Initialize FastDETIM v2 ─────────────────────────────────────
+    # ── Initialize FastDETIM ─────────────────────────────────────
     from dixon_melt.fast_model import FastDETIM
     from dixon_melt import config
 
@@ -302,7 +361,7 @@ def main():
         grid, ipot_table,
         transfer_alpha=config.TRANSFER_ALPHA,
         transfer_beta=config.TRANSFER_BETA,
-        ref_elev=config.DIXON_AWS_ELEV,
+        ref_elev=config.SNOTEL_ELEV,  # 375m (D-013: corrected from 1230m)
         stake_names=config.STAKE_NAMES,
         stake_elevs=config.STAKE_ELEVS,
         stake_tol=config.STAKE_TOL,
@@ -314,7 +373,7 @@ def main():
     # ── JIT warm-up ─────────────────────────────────────────────────
     print("\nJIT compilation warm-up...")
     t0 = time.time()
-    test_x = np.array([5.0, -0.003, 0.3e-3, 0.6e-3, -5.5e-3, 0.001, 2.0, 1.5])
+    test_x = np.array([5.0, -0.003, 0.3e-3, 0.6e-3, -5.0e-3, 0.001, 2.0, 1.5])
     _ = compute_objective(test_x, fmodel, targets)
     print(f"  Done in {time.time()-t0:.1f}s")
 
@@ -334,9 +393,13 @@ def main():
     print(f"  Parameters: {len(PARAM_NAMES)}")
     print(f"  Population: {DE_POPSIZE} x {len(PARAM_NAMES)} = {DE_POPSIZE * len(PARAM_NAMES)}")
     print(f"  Max iterations: {DE_MAXITER}")
+    print(f"  Fixed: k_wind={FIXED_K_WIND}")
+    print(f"  ref_elev: {config.SNOTEL_ELEV} m (D-013: 1230 ft corrected)")
+    print(f"  Geodetic penalty lambda: {GEODETIC_LAMBDA}")
     print(f"  Bounds:")
     for name, (lo, hi) in zip(PARAM_NAMES, PARAM_BOUNDS):
         print(f"    {name:15s}: [{lo:.6f}, {hi:.6f}]")
+    print(f"  Cost function: inverse-variance (1/sigma^2) + geodetic hard penalty")
     print(f"{'=' * 70}\n")
 
     eval_count = [0]
@@ -353,9 +416,8 @@ def main():
         if eval_count[0] % 50 == 0:
             elapsed = time.time() - t_start
             print(f"  eval {eval_count[0]:5d} | cost={cost:.3f} | best={best_cost[0]:.3f} | "
-                  f"MF={params['MF']:.2f} MFg={params['MF_grad']*1e3:.2f} "
-                  f"il={params['internal_lapse']*1e3:.1f} "
-                  f"pc={params['precip_corr']:.2f} | {elapsed:.0f}s")
+                  f"MF={params['MF']:.2f} lr={params['lapse_rate']*1e3:.1f} "
+                  f"pc={params['precip_corr']:.2f} T0={params['T0']:.1f} | {elapsed:.0f}s")
         return cost
 
     result = differential_evolution(
@@ -369,7 +431,7 @@ def main():
     best_params = {name: val for name, val in zip(PARAM_NAMES, result.x)}
 
     print(f"\n{'=' * 70}")
-    print(f"CALIBRATION v5 COMPLETE")
+    print(f"CALIBRATION v8 COMPLETE")
     print(f"{'=' * 70}")
     print(f"  Success: {result.success}")
     print(f"  Message: {result.message}")
@@ -386,8 +448,16 @@ def main():
             print(f"    {k:15s}: {v:.6f} (= {v*1000:.3f} per km)")
         else:
             print(f"    {k:15s}: {v:.4f}")
+    print(f"\n  Fixed parameters:")
+    print(f"    k_wind         : {FIXED_K_WIND:.4f}")
+    print(f"    ref_elev       : {config.SNOTEL_ELEV:.1f} m (1230 ft)")
 
     # ── Validation ──────────────────────────────────────────────────
+    # Map lapse_rate -> internal_lapse for model runs
+    run_params = dict(best_params)
+    run_params['internal_lapse'] = run_params.pop('lapse_rate')
+    run_params['k_wind'] = FIXED_K_WIND
+
     print(f"\n{'=' * 70}")
     print("VALIDATION")
     print(f"{'=' * 70}")
@@ -398,18 +468,43 @@ def main():
             print(f"\n  WY{yr}: insufficient data, skipping")
             continue
         T, P, doy = arrays
-        r = fmodel.run(T, P, doy, best_params, 0.0)
+        r = fmodel.run(T, P, doy, run_params, 0.0)
         print(f"\n  WY{yr}:")
         print(f"    Glacier-wide balance: {r['glacier_wide_balance']:+.3f} m w.e.")
-        obs_annual = stakes[(stakes['period_type'] == 'annual') & (stakes['year'] == yr)]
-        for site in ['ABL', 'ELA', 'ACC']:
-            mod = r['stake_balances'].get(site, np.nan)
-            obs_row = obs_annual[obs_annual['site_id'] == site]
-            obs = obs_row['mb_obs_mwe'].values[0] if len(obs_row) > 0 else np.nan
-            diff = mod - obs if not (np.isnan(mod) or np.isnan(obs)) else np.nan
-            obs_str = f"{obs:+.2f}" if not np.isnan(obs) else "  n/a"
-            diff_str = f"{diff:+.2f}" if not np.isnan(diff) else "  n/a"
-            print(f"      {site}: modeled={mod:+.2f}, observed={obs_str}, residual={diff_str}")
+        for ptype in ['annual', 'winter', 'summer']:
+            obs_rows = stakes[(stakes['period_type'] == ptype) & (stakes['year'] == yr)]
+            if len(obs_rows) == 0:
+                continue
+            # For winter/summer, run the specific period
+            if ptype != 'annual':
+                for _, obs_row in obs_rows.iterrows():
+                    site = obs_row['site_id']
+                    start_str = obs_row['date_start'].strftime('%Y-%m-%d')
+                    end_str = obs_row['date_end'].strftime('%Y-%m-%d')
+                    parr = prepare_period_arrays(climate, start_str, end_str)
+                    if parr is None:
+                        continue
+                    Tp, Pp, doyp = parr
+                    if ptype == 'summer':
+                        w_ela = stakes[(stakes['year']==yr) & (stakes['site_id']=='ELA')
+                                       & (stakes['period_type']=='winter')]
+                        wswe = w_ela['mb_obs_mwe'].values[0] * 1000 if len(w_ela) else 2500.0
+                    else:
+                        wswe = 0.0
+                    rp = fmodel.run(Tp, Pp, doyp, run_params, wswe)
+                    mod = rp['stake_balances'].get(site, np.nan)
+                    obs = obs_row['mb_obs_mwe']
+                    res = mod - obs if not np.isnan(mod) else np.nan
+                    print(f"      {site} {ptype}: mod={mod:+.2f}, obs={obs:+.2f}, res={res:+.2f}")
+            else:
+                for site in ['ABL', 'ELA', 'ACC']:
+                    mod = r['stake_balances'].get(site, np.nan)
+                    obs_row = obs_rows[obs_rows['site_id'] == site]
+                    obs = obs_row['mb_obs_mwe'].values[0] if len(obs_row) > 0 else np.nan
+                    diff = mod - obs if not (np.isnan(mod) or np.isnan(obs)) else np.nan
+                    obs_str = f"{obs:+.2f}" if not np.isnan(obs) else "  n/a"
+                    diff_str = f"{diff:+.2f}" if not np.isnan(diff) else "  n/a"
+                    print(f"      {site} annual: mod={mod:+.2f}, obs={obs_str}, res={diff_str}")
 
     print(f"\n  Geodetic MB:")
     for gtgt in targets['geodetic']:
@@ -418,27 +513,29 @@ def main():
         annual_bals = []
         for wy_year, arrays in gtgt['year_data'].items():
             T, P, doy = arrays
-            r = fmodel.run(T, P, doy, best_params, 0.0)
+            r = fmodel.run(T, P, doy, run_params, 0.0)
             annual_bals.append(r['glacier_wide_balance'])
         mean_bal = np.mean(annual_bals) if annual_bals else np.nan
         print(f"    {gtgt['period']}: modeled={mean_bal:+.3f}, observed={gtgt['obs']:+.3f} "
               f"+/- {gtgt['unc']:.3f} ({len(annual_bals)} years)")
 
     # ── Save outputs ────────────────────────────────────────────────
-    with open(OUTPUT_DIR / 'best_params_v5.json', 'w') as f:
+    with open(OUTPUT_DIR / 'best_params_v8.json', 'w') as f:
         json.dump(best_params, f, indent=2)
 
     log_df = pd.DataFrame(log)
-    log_df.to_csv(OUTPUT_DIR / 'calibration_log_v5.csv', index=False)
+    log_df.to_csv(OUTPUT_DIR / 'calibration_log_v8.csv', index=False)
 
     summary = {
-        'version': 5,
+        'version': 8,
         'fixes': [
-            'Statistical temp transfer: Nuka -> on-glacier (D-007)',
-            'Elevation-dependent melt factor (MF_grad)',
-            'Raw Nuka input (not pre-adjusted)',
-            'internal_lapse replaces lapse_rate',
-            'Winter katabatic correction: alpha=0.85, beta=+1.0 for Oct-Apr (D-010)',
+            'SNOTEL elevation corrected: 1230 ft = 375 m (D-013)',
+            'Lapse rate fixed at -5.0 C/km (D-015)',
+            'k_wind removed from calibration (D-015)',
+            'precip_corr bounded [1.2, 3.0] (D-013)',
+            'r_ice upper bound widened to 5.0e-3',
+            'Geodetic 2000-2020 dropped (D-014)',
+            'Inverse-variance cost function + geodetic hard penalty (D-014)',
         ],
         'success': bool(result.success),
         'message': result.message,
@@ -446,20 +543,22 @@ def main():
         'n_evaluations': eval_count[0],
         'wall_time_s': elapsed,
         'params': best_params,
+        'fixed_params': {
+            'k_wind': FIXED_K_WIND,
+            'ref_elev': config.SNOTEL_ELEV,
+        },
         'config': {
             'grid_res': GRID_RES,
             'de_maxiter': DE_MAXITER,
             'de_popsize': DE_POPSIZE,
-            'w_stake_annual': W_STAKE_ANNUAL,
-            'w_stake_summer': W_STAKE_SUMMER,
-            'w_geodetic': W_GEODETIC,
-            'w_physics': W_PHYSICS,
+            'geodetic_lambda': GEODETIC_LAMBDA,
+            'cost_function': 'inverse-variance (1/sigma^2) + geodetic hard penalty',
         },
     }
-    with open(OUTPUT_DIR / 'calibration_summary_v5.json', 'w') as f:
+    with open(OUTPUT_DIR / 'calibration_summary_v8.json', 'w') as f:
         json.dump(summary, f, indent=2)
 
-    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v5)")
+    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v8)")
     print("Done!")
 
 

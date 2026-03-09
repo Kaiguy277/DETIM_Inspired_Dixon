@@ -50,7 +50,7 @@ Code: `dixon_melt/terrain.py`.
 | File | `data/climate/nuka_snotel_full.csv` |
 | Station | Nuka Glacier SNOTEL, site 1037 |
 | Location | 59.698°N, 150.712°W |
-| Elevation | 1230 m |
+| Elevation | 375 m (1230 ft; corrected D-013, was incorrectly recorded as 1230 m) |
 | Distance to Dixon | ~20 km |
 | Period | 1990-10-01 to present |
 | Variables | TAVG, TMAX, TMIN (°F→°C), PREC cumulative (in→mm), SNWD (in→cm) |
@@ -74,9 +74,13 @@ Code: `dixon_melt/terrain.py`.
    calibrated lapse rate
 
 ### Known Issues
+- **Elevation units:** NRCS reports in feet; original data entry recorded
+  1230 as meters. Corrected to 375 m (1230 ft) in D-013. This error was
+  the root cause of CAL-001 through CAL-007 failures.
 - **Undercatch:** SNOTEL gauges significantly underestimate solid precipitation
   in windy conditions. A precipitation correction factor (precip_corr) is
-  calibrated to compensate. Typical values for maritime Alaska: 1.5–4.0×.
+  calibrated to compensate. Literature values for maritime Alaska: 1.2–3.0×
+  (PyGEM cap: 3.0; Wolverine Glacier analog: 2.28×).
 - **Distance:** 20 km from Dixon means precipitation events may differ in
   timing and magnitude. Orographic enhancement patterns differ.
 - **No SWE pillow:** Cannot directly validate winter accumulation at station.

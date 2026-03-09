@@ -310,3 +310,325 @@ With corrected winter transfer, expect:
 - `calibration_output/calibration_log_v5.csv`
 - `calibration_output/calibration_summary_v5.json`
 - `calibration_output/calibration_v5_stdout.log`
+
+### Post-mortem
+CAL-005 never completed — process was killed at step 32/80 (eval ~3950).
+Best cost at termination: 16.43, worse than CAL-004 (17.82). The katabatic
+winter correction did NOT improve results. precip_corr remained near lower
+bound (~0.5-0.7). Root issue identified as spatial precipitation distribution,
+not temperature transfer — see D-011.
+
+---
+
+## Run CAL-006: v6 Calibration (wind redistribution)
+
+**Date:** 2026-03-06
+**Script:** `run_calibration_full.py` (v6)
+**Status:** RUNNING
+
+### Changes from CAL-005
+1. (D-011) Wind redistribution via Winstral Sx parameter
+   - Prevailing wind: ESE (100°), d_max=300m
+   - New parameter: k_wind [0.0, 1.0]
+   - Sx normalized to [-1,+1], zero-meaned over glacier (mass conserving)
+
+### Configuration
+| Setting | Value |
+|---------|-------|
+| Grid resolution | 100 m |
+| Method | differential_evolution |
+| Population size | 15 per param (135 total) |
+| Max iterations | 80 |
+| Tolerance | 1e-4 |
+| Mutation | (0.5, 1.0) |
+| Recombination | 0.7 |
+| Seed | 42 |
+
+### Parameters (9)
+| Parameter | Lower | Upper | Role |
+|-----------|-------|-------|------|
+| MF (mm/d/K) | 1.0 | 12.0 | Base melt factor |
+| MF_grad (mm/d/K/m) | -0.01 | 0.0 | Melt factor elevation gradient |
+| r_snow | 0.02e-3 | 1.5e-3 | Radiation factor (snow) |
+| r_ice | 0.05e-3 | 3.0e-3 | Radiation factor (ice) |
+| internal_lapse (C/m) | -8.0e-3 | -3.0e-3 | On-glacier lapse rate |
+| precip_grad (frac/m) | 0.0002 | 0.006 | Precipitation gradient |
+| precip_corr | 0.5 | 5.0 | Precipitation correction |
+| T0 (C) | 0.5 | 3.0 | Rain/snow threshold |
+| k_wind | 0.0 | 1.0 | Wind redistribution strength |
+
+### Hypothesis
+Wind redistribution allows the optimizer to decouple spatial snow distribution
+from total precipitation amount. This should allow precip_corr to increase to
+physically reasonable values (>1.0) while k_wind handles the E-W asymmetry.
+
+### Results
+**KILLED** at step 29/80 (eval ~4050, cost 16.54). Wind redistribution alone
+did not fix the core issue. precip_corr still at lower bound (~0.55).
+Root cause identified: statistical temperature transfer makes temperatures
+too cold for DETIM to generate observed melt. See D-012.
+
+### Output files
+- `calibration_output/calibration_v6_stdout.log` (partial)
+
+---
+
+## Run CAL-007: v7 Calibration (identity transfer + winter targets)
+
+**Date:** 2026-03-06
+**Script:** `run_calibration_full.py` (v7)
+**Status:** RUNNING
+
+### Changes from CAL-006 (D-012)
+1. Identity temperature transfer: raw Nuka T at 1230m, no katabatic correction
+2. ref_elev = 1230m (Nuka SNOTEL), lapse_rate calibrated from there
+3. Winter balance added as explicit calibration target (W=0.6)
+4. precip_corr lower bound raised to 1.0 (Nuka undercatch is real)
+5. lapse_rate bounds widened to [-9.0, -3.0] C/km
+6. DE maxiter increased to 200 for weekend convergence
+
+### Configuration
+| Setting | Value |
+|---------|-------|
+| Grid resolution | 100 m |
+| Method | differential_evolution |
+| Population size | 15 per param (135 total) |
+| Max iterations | 200 |
+| Tolerance | 1e-4 |
+| Mutation | (0.5, 1.0) |
+| Recombination | 0.7 |
+| Seed | 42 |
+
+### Objective weights
+| Component | Weight |
+|-----------|--------|
+| w_stake_annual | 1.0 |
+| w_stake_summer | 0.8 |
+| w_stake_winter | 0.6 |
+| w_geodetic | 0.4 |
+| w_physics | 0.3 |
+
+### Parameters (9)
+| Parameter | Lower | Upper | Role |
+|-----------|-------|-------|------|
+| MF (mm/d/K) | 1.0 | 12.0 | Base melt factor |
+| MF_grad (mm/d/K/m) | -0.01 | 0.0 | Melt factor elevation gradient |
+| r_snow | 0.02e-3 | 1.5e-3 | Radiation factor (snow) |
+| r_ice | 0.05e-3 | 3.0e-3 | Radiation factor (ice) |
+| lapse_rate (C/m) | -9.0e-3 | -3.0e-3 | From Nuka 1230m to each cell |
+| precip_grad (frac/m) | 0.0002 | 0.006 | Precipitation gradient |
+| precip_corr | 1.0 | 6.0 | Precipitation correction |
+| T0 (C) | 0.5 | 3.0 | Rain/snow threshold |
+| k_wind | 0.0 | 1.0 | Wind redistribution strength |
+
+### Hypothesis
+With identity transfer, temperatures are warm enough for DETIM to generate
+realistic melt with literature-range MF values. precip_corr should settle
+at >1.0 (correcting Nuka undercatch). Winter balance targets force the model
+to get accumulation right at each stake. The optimizer has much more dynamic
+range to work with.
+
+### Results
+| Metric | Value |
+|--------|-------|
+| Final cost | 17.035 |
+| Convergence | YES (tol met at step 143) |
+| Total evaluations | 20,050 |
+| Wall time | 6,508 s (108.5 min) |
+
+| Parameter | Best | At bound? |
+|-----------|------|-----------|
+| MF (mm/d/K) | 1.554 | No (but very low) |
+| MF_grad (per m) | -0.00346 | No |
+| r_snow | 0.001498 | YES (upper) |
+| r_ice | 0.002999 | YES (upper) |
+| lapse_rate (°C/m) | -0.00300 | YES (upper, shallowest) |
+| precip_grad | 0.000200 | YES (lower) |
+| precip_corr | 4.524 | No (but extreme) |
+| T0 (°C) | 2.209 | No |
+| k_wind | 0.0005 | YES (lower, effectively off) |
+
+### Validation
+| Target | Modeled | Observed | Residual |
+|--------|---------|----------|----------|
+| ABL 2023 annual | -3.38 | -4.50 | +1.12 |
+| ABL 2024 annual | -3.83 | -2.63 | -1.20 |
+| ELA 2023 annual | -0.52 | +0.10 | -0.62 |
+| ELA 2024 annual | -0.92 | +0.10 | -1.02 |
+| ACC 2023 annual | +1.14 | +0.37 | +0.77 |
+| ACC 2024 annual | +0.74 | +1.46 | -0.72 |
+| Geodetic 2000-2010 | **+1.404** | -1.072 | **+2.48** |
+| Geodetic 2010-2020 | -0.552 | -0.806 | +0.25 |
+| Geodetic 2000-2020 | +0.426 | -0.939 | +1.37 |
+
+### Assessment
+**CONVERGED but physically unreasonable.** 5/9 parameters at bounds. The
+geodetic results are catastrophic: model shows Dixon GAINING mass 2000-2010
+when Hugonnet shows -1.07 m w.e./yr loss. precip_corr=4.52 (dumping 10.5 m/yr
+of precipitation) is 2-3x above any literature value.
+
+**ROOT CAUSE IDENTIFIED (D-013):** Nuka SNOTEL elevation is 1230 FEET (375 m),
+not 1230 meters as used in all runs. The 855m elevation error placed the
+entire glacier BELOW the reference station instead of above it, making all
+on-glacier temperatures 3-4°C too warm. This is the root cause of every
+calibration failure from CAL-001 through CAL-007.
+
+### Output files
+- `calibration_output/best_params_v7.json`
+- `calibration_output/calibration_log_v7.csv`
+- `calibration_output/calibration_summary_v7.json`
+- `calibration_output/calibration_v7_stdout.log`
+
+---
+
+## Run CAL-008: v8 Calibration (elevation fix + cost restructuring)
+
+**Date:** 2026-03-09
+**Script:** `run_calibration_full.py` (v8)
+**Status:** PENDING
+
+### Changes from CAL-007 (D-013, D-014, D-015)
+1. **SNOTEL elevation corrected:** 1230 ft = 375 m (not 1230 m)
+2. **Lapse rate fixed** at -5.0 C/km (removed from calibration)
+3. **k_wind removed** from calibration (was effectively zero)
+4. **precip_corr bounds** tightened to [1.2, 3.0]
+5. **r_ice bound** widened to [0.05e-3, 5.0e-3]
+6. **Geodetic 2000-2020 dropped** (not independent of sub-periods)
+7. **Cost function:** inverse-variance weighting (1/σ²) with geodetic hard penalty
+
+### Configuration
+| Setting | Value |
+|---------|-------|
+| Grid resolution | 100 m |
+| Method | differential_evolution |
+| Population size | 15 per param (105 total) |
+| Max iterations | 200 |
+| Tolerance | 1e-4 |
+| Mutation | (0.5, 1.0) |
+| Recombination | 0.7 |
+| Seed | 42 |
+
+### Parameters (8)
+| Parameter | Lower | Upper | Role |
+|-----------|-------|-------|------|
+| MF (mm/d/K) | 1.0 | 12.0 | Base melt factor |
+| MF_grad (mm/d/K/m) | -0.01 | 0.0 | Melt factor elevation gradient |
+| r_snow | 0.02e-3 | 1.5e-3 | Radiation factor (snow) |
+| r_ice | 0.05e-3 | 5.0e-3 | Radiation factor (ice) |
+| lapse_rate (C/m) | -7.0e-3 | -4.0e-3 | Temperature lapse rate (literature bounded) |
+| precip_grad (frac/m) | 0.0002 | 0.006 | Precipitation gradient |
+| precip_corr | 1.2 | 3.0 | Precipitation correction |
+| T0 (C) | 0.5 | 3.0 | Rain/snow threshold |
+
+### Fixed parameters
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| ref_elev | 375 m | Nuka SNOTEL corrected (D-013) |
+| k_wind | 0.0 | CAL-007 converged to ~0 (D-015) |
+
+### Hypothesis
+With correct reference elevation, the model will produce physically reasonable
+temperatures at all stakes. The glacier surface is now properly ABOVE the
+station, so lapse-rate cooling naturally produces colder on-glacier temps.
+This should allow:
+- MF in literature range (3-8 mm/d/K)
+- precip_corr in defensible range (1.5-2.5)
+- Geodetic fit within uncertainty bounds
+- r values may come off upper bounds
+
+### Results
+| Metric | Value |
+|--------|-------|
+| Final cost | 577.13 |
+| Convergence | NO (hit maxiter) |
+| Total evaluations | 25,191 |
+| Wall time | 5,112 s (85.2 min) |
+
+| Parameter | Best | At bound? |
+|-----------|------|-----------|
+| MF (mm/d/K) | 9.637 | No |
+| MF_grad (per m) | -0.00999 | YES (lower) |
+| r_snow | 0.000087 | No (very low) |
+| r_ice | 0.000087 | No (= r_snow) |
+| lapse_rate (°C/m) | -0.00400 | YES (upper, shallowest) |
+| precip_grad | 0.000200 | YES (lower) |
+| precip_corr | 1.200 | YES (lower) |
+| T0 (°C) | 0.501 | YES (lower) |
+
+### Validation
+| Target | Modeled | Observed | Residual |
+|--------|---------|----------|----------|
+| ABL 2023 annual | -4.46 | -4.50 | +0.04 |
+| ELA 2023 annual | -0.99 | +0.10 | -1.09 |
+| ACC 2023 annual | +0.93 | +0.37 | +0.56 |
+| ABL 2024 annual | -4.54 | -2.63 | -1.91 |
+| ELA 2024 annual | -1.06 | +0.10 | -1.16 |
+| ACC 2024 annual | +0.80 | +1.46 | -0.66 |
+| ELA 2023 winter | +0.77 | +2.36 | -1.59 |
+| ACC 2023 winter | +0.98 | +2.45 | -1.47 |
+| Geodetic 2000-2010 | -0.208 | -1.072 | +0.86 |
+| Geodetic 2010-2020 | -1.372 | -0.806 | -0.57 |
+
+### Assessment
+**MAJOR PROGRESS on MF (9.6, literature-reasonable) but new pathology.**
+Elevation fix (D-013) worked — MF moved from 1.55 to 9.6, confirming the
+root cause. However, 6/8 params at bounds, and the model collapsed to a
+pure degree-day model (r_snow ≈ r_ice ≈ 0, radiation effectively off).
+
+**Key findings from post-run analysis:**
+1. **Stakes and geodetic ARE compatible:** 2023 stake-extrapolated glacier-wide
+   balance = -1.07, matching geodetic 2000-2010 exactly. No fundamental conflict.
+2. **Geodetic sub-periods are NOT distinguishable:** Z=0.88 (p>0.30). The
+   "acceleration" from -1.07 to -0.81 is within noise. Using both sub-periods
+   creates a contradictory constraint because Nuka shows OPPOSITE temperature
+   trends (cooler 2001-2010 summers but more mass loss).
+3. **precip_corr bound too tight:** Minimum pc for ELA winter balance is
+   3.01-3.16 for dry years. Cap of 3.0 prevents the model from accumulating
+   enough snow. Winter balances underestimated by 1.5+ m w.e.
+4. **Recommendation (D-016):** Use only 2000-2020 geodetic mean for calibration,
+   widen precip_corr to [1.2, 4.0].
+
+### Output files
+- `calibration_output/best_params_v8.json`
+- `calibration_output/calibration_log_v8.csv`
+- `calibration_output/calibration_summary_v8.json`
+- `calibration_output/calibration_v8_stdout.log`
+
+---
+
+## Run CAL-009: v9 Calibration (single geodetic + wider precip_corr)
+
+**Date:** 2026-03-09
+**Script:** `run_calibration_full.py` (v9)
+**Status:** PENDING
+
+### Changes from CAL-008 (D-016)
+1. **Geodetic:** Use only 2000-2020 mean (-0.939 ± 0.122) for calibration;
+   sub-periods reported for validation only
+2. **precip_corr bounds** widened to [1.2, 4.0] (3.0-3.2x required for winter)
+
+### Configuration
+Same DE settings as CAL-008 (200 maxiter, 15 popsize, 8 params).
+
+### Parameters (8)
+| Parameter | Lower | Upper | Role |
+|-----------|-------|-------|------|
+| MF (mm/d/K) | 1.0 | 12.0 | Base melt factor |
+| MF_grad (mm/d/K/m) | -0.01 | 0.0 | Melt factor elevation gradient |
+| r_snow | 0.02e-3 | 1.5e-3 | Radiation factor (snow) |
+| r_ice | 0.05e-3 | 5.0e-3 | Radiation factor (ice) |
+| lapse_rate (C/m) | -7.0e-3 | -4.0e-3 | Temperature lapse rate |
+| precip_grad (frac/m) | 0.0002 | 0.006 | Precipitation gradient |
+| precip_corr | 1.2 | 4.0 | Precipitation correction (widened) |
+| T0 (C) | 0.5 | 3.0 | Rain/snow threshold |
+
+### Hypothesis
+With the single 2000-2020 geodetic constraint (no contradictory sub-period
+signals) and wider precip_corr (physically required for winter balance),
+the optimizer should find a solution that simultaneously:
+- Matches winter accumulation at stakes (needs pc ≈ 2.5-3.5)
+- Matches 20-year geodetic mean (needs enough melt to offset accumulation)
+- Uses radiation factors (not just pure degree-day as in CAL-008)
+
+### Results
+*Pending*
