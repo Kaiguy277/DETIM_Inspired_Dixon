@@ -543,3 +543,58 @@ glacier retreat.
   - Chen, J. & Ohmura, A. (1990). Ann. Glaciol., 14, 85-89.
   - Farinotti, D. et al. (2019). Nature Geosci., 12, 168-173.
   - Bahr, D. B. et al. (2015). Rev. Geophys., 53, 95-140.
+
+## D-019: CMIP6 Projection Pipeline with Discharge Routing
+
+**Date:** 2026-03-10
+**Decision:** Replace placeholder future climate (linear delta method) with
+real CMIP6 projections from NASA NEX-GDDP-CMIP6. Wire discharge routing
+into projection pipeline. Implement multi-GCM ensemble for uncertainty.
+
+**Climate data — NEX-GDDP-CMIP6:**
+  - Source: NASA, hosted on AWS S3 (no authentication)
+  - Resolution: 0.25° (~25 km), daily, bias-corrected against observations
+  - Scenarios: SSP1-2.6, SSP2-4.5, SSP5-8.5 (SSP3-7.0 not available)
+  - Period: 2015-2100 (historical: 1950-2014)
+  - Extraction: single pixel nearest to Dixon (59.62°N, 150.88°W)
+  - Bias correction: monthly delta method against Nuka SNOTEL 1991-2020
+    climatology (additive for T, multiplicative for P)
+
+**GCM ensemble (5 models):**
+  1. ACCESS-CM2 (Australian, good Arctic performance)
+  2. EC-Earth3 (European, high resolution)
+  3. MPI-ESM1-2-HR (German, high resolution)
+  4. MRI-ESM2-0 (Japanese, good precip)
+  5. NorESM2-MM (Norwegian, high-latitude design)
+
+  Selection rationale: representative subset following Rounce et al. (2023),
+  covering multiple modeling centers and good high-latitude performance.
+
+**Discharge routing — wired into projection pipeline:**
+  - Parallel linear reservoirs (Hock & Jansson 2005): fast (supraglacial),
+    slow (subglacial), groundwater
+  - Default parameters from config.py (k_fast=0.3, k_slow=0.05, k_gw=0.01)
+  - Output: daily discharge (m3/s), peak daily, mean annual, total annual
+
+**Peak water analysis:**
+  - 11-year running mean of ensemble-mean annual discharge
+  - Peak year with GCM uncertainty range
+  - Computed per scenario
+
+**New files:**
+  - `download_cmip6.py` — download + single-pixel extraction from S3
+  - `dixon_melt/climate_projections.py` — bias correction, ensemble loading
+  - `run_projection.py` — complete rewrite for multi-GCM, multi-SSP ensemble
+
+**Workflow:**
+  1. `python download_cmip6.py` — downloads ~5 GCMs × 3 SSPs × 76 years × 2 vars
+  2. `python run_projection.py --scenario ssp245` — one scenario
+  3. `python run_projection.py --scenario all` — all scenarios with comparison
+
+**References:**
+  - Thrasher, B. et al. (2022). NASA NEX-GDDP-CMIP6.
+  - Rounce, D. R. et al. (2023). Science, 379(6627), 78-83.
+  - Hock, R. & Jansson, P. (2005). In: Anderson & McDonnell (eds),
+    Encyclopedia of Hydrological Sciences.
+  - Maraun, D. & Widmann, M. (2018). Statistical Downscaling and Bias
+    Correction for Climate Research. Cambridge University Press.
