@@ -2,13 +2,17 @@
 Future projection runner for Dixon Glacier.
 
 Runs DETIM forward under climate scenarios with evolving glacier geometry
-(delta-h parameterization). Tracks mass balance, area, discharge, and
-identifies "peak water" timing.
+(delta-h parameterization, Huss et al. 2010). Tracks mass balance, area,
+volume, discharge, and identifies "peak water" timing.
+
+Ice thickness is initialized from Farinotti et al. (2019) consensus data
+if available, otherwise estimated via Bahr et al. (1997) V-A scaling.
 
 Usage:
     python run_projection.py [--scenario historical|warming_low|warming_high]
                              [--end-year 2100]
-                             [--params best_params_v4.json]
+                             [--params best_params_v10.json]
+                             [--thickness path/to/farinotti.tif]
 
 Requires calibrated parameters from calibration run.
 Future climate forcing: placeholder using historical perturbation until
@@ -92,7 +96,7 @@ def make_future_climate(historical_climate, scenario, target_year, base_period=(
 
 
 def run_projection(params_path, scenario='warming_low', end_year=2100,
-                   grid_res=100.0):
+                   grid_res=100.0, farinotti_path=None):
     """Run full glacier projection to end_year.
 
     Returns projection results dict.
@@ -121,8 +125,9 @@ def run_projection(params_path, scenario='warming_low', end_year=2100,
 
     from dixon_melt.fast_model import FastDETIM
     from dixon_melt import config
-    from dixon_melt.glacier_dynamics import apply_deltah
-    from dixon_melt.routing import route_linear_reservoirs
+    from dixon_melt.glacier_dynamics import (
+        initialize_ice_thickness, compute_bedrock, apply_deltah, va_check,
+    )
 
     fmodel = FastDETIM(
         grid, ipot_table,
@@ -133,15 +138,37 @@ def run_projection(params_path, scenario='warming_low', end_year=2100,
         stake_elevs=config.STAKE_ELEVS,
     )
 
+    # ── Initialize ice thickness & bedrock ────────────────────────────
+    ice_thickness, thickness_source = initialize_ice_thickness(
+        grid, farinotti_path=farinotti_path)
+    bedrock = compute_bedrock(grid['elevation'], ice_thickness)
+    cell_size = grid['cell_size']
+
+    n_init = int(grid['glacier_mask'].sum())
+    area_init = n_init * cell_size**2 / 1e6
+    mean_thick = ice_thickness[grid['glacier_mask']].mean()
+    vol_init = ice_thickness[grid['glacier_mask']].sum() * cell_size**2 / 1e9
+    va_init = va_check(area_init, ice_thickness, grid['glacier_mask'], cell_size)
+
+    print(f"\n  Ice thickness source: {thickness_source}")
+    print(f"  Initial area: {area_init:.1f} km2")
+    print(f"  Initial volume: {vol_init:.3f} km3 "
+          f"(V-A: {va_init['va_volume_km3']:.3f} km3, "
+          f"ratio: {va_init['ratio']:.2f})")
+    print(f"  Mean thickness: {mean_thick:.0f} m")
+    print(f"  Bedrock range: {bedrock[grid['glacier_mask']].min():.0f}"
+          f"–{bedrock[grid['glacier_mask']].max():.0f} m\n")
+
     # Projection state
     current_elev = grid['elevation'].copy()
     current_mask = grid['glacier_mask'].copy()
-    cell_size = grid['cell_size']
 
     results = {
         'year': [],
         'glacier_wide_balance': [],
         'area_km2': [],
+        'volume_km3': [],
+        'mean_thickness_m': [],
         'cum_balance': [],
         'peak_daily_melt_mm': [],
         'peak_daily_runoff_mm': [],
@@ -149,6 +176,9 @@ def run_projection(params_path, scenario='warming_low', end_year=2100,
         'mean_summer_T_nuka': [],
         'elev_min': [],
         'elev_max': [],
+        'size_class': [],
+        'va_ratio': [],
+        'cells_removed': [],
     }
 
     cum_balance = 0.0
@@ -161,6 +191,8 @@ def run_projection(params_path, scenario='warming_low', end_year=2100,
 
         area_km2 = n_glacier * cell_size**2 / 1e6
         glacier_elevs = current_elev[current_mask]
+        glacier_thick = ice_thickness[current_mask]
+        vol_km3 = glacier_thick.sum() * cell_size**2 / 1e9
 
         # Generate climate for this year
         wy_climate = make_future_climate(climate, scenario, wy_year)
@@ -185,9 +217,18 @@ def run_projection(params_path, scenario='warming_low', end_year=2100,
         summer_mask = (doy >= 152) & (doy <= 243)
         mean_summer_T = T[summer_mask].mean() if summer_mask.any() else np.nan
 
+        # V-A check
+        va = va_check(area_km2, ice_thickness, current_mask, cell_size)
+
+        # Determine size class
+        from dixon_melt.glacier_dynamics import _select_size_class
+        size_class = _select_size_class(area_km2)
+
         results['year'].append(wy_year)
         results['glacier_wide_balance'].append(mb)
         results['area_km2'].append(area_km2)
+        results['volume_km3'].append(vol_km3)
+        results['mean_thickness_m'].append(float(glacier_thick.mean()))
         results['cum_balance'].append(cum_balance)
         results['peak_daily_melt_mm'].append(float(r['daily_melt'].max()))
         results['peak_daily_runoff_mm'].append(float(r['daily_runoff'].max()))
@@ -195,15 +236,23 @@ def run_projection(params_path, scenario='warming_low', end_year=2100,
         results['mean_summer_T_nuka'].append(float(mean_summer_T))
         results['elev_min'].append(float(glacier_elevs.min()))
         results['elev_max'].append(float(glacier_elevs.max()))
+        results['size_class'].append(size_class)
+        results['va_ratio'].append(va['ratio'])
+        results['cells_removed'].append(0)
 
         if wy_year % 10 == 0 or wy_year == 2026:
             print(f"  WY{wy_year}: MB={mb:+.2f} m w.e., Area={area_km2:.1f} km2, "
-                  f"Cum={cum_balance:+.1f} m, Peak melt={r['daily_melt'].max():.1f} mm/d")
+                  f"Vol={vol_km3:.3f} km3, H_mean={glacier_thick.mean():.0f} m, "
+                  f"Class={size_class}")
+            if va['warning']:
+                print(f"    WARNING: {va['warning']}")
 
-        # Apply delta-h geometry update
-        current_elev, current_mask, _ = apply_deltah(
-            current_elev, current_mask, mb
+        # Apply delta-h geometry update (modifies ice_thickness in place)
+        current_elev, current_mask, cells_removed = apply_deltah(
+            current_elev, current_mask, ice_thickness, bedrock,
+            mb, cell_size,
         )
+        results['cells_removed'][-1] = cells_removed
 
     elapsed = time.time() - t_start
     print(f"\n  Projection complete in {elapsed:.0f}s")
@@ -223,6 +272,15 @@ def run_projection(params_path, scenario='warming_low', end_year=2100,
         else:
             print(f"\n  Insufficient years for peak water analysis")
 
+    # ── Final state summary ──────────────────────────────────────────
+    if len(results['year']) > 0:
+        print(f"\n  Final state (WY{results['year'][-1]}):")
+        print(f"    Area: {results['area_km2'][-1]:.1f} km2 "
+              f"({100 * results['area_km2'][-1] / area_init:.0f}% of initial)")
+        print(f"    Volume: {results['volume_km3'][-1]:.3f} km3 "
+              f"({100 * results['volume_km3'][-1] / max(vol_init, 1e-9):.0f}% of initial)")
+        print(f"    Cumulative balance: {cum_balance:+.1f} m w.e.")
+
     # Save
     OUTPUT_DIR.mkdir(exist_ok=True)
     df = pd.DataFrame(results)
@@ -239,7 +297,10 @@ if __name__ == '__main__':
     parser.add_argument('--scenario', default='warming_low',
                         choices=['historical', 'warming_low', 'warming_high'])
     parser.add_argument('--end-year', type=int, default=2100)
-    parser.add_argument('--params', default='calibration_output/best_params_v4.json')
+    parser.add_argument('--params', default='calibration_output/best_params_v10.json')
+    parser.add_argument('--thickness', default=None,
+                        help='Path to Farinotti et al. (2019) ice thickness GeoTIFF')
     args = parser.parse_args()
 
-    run_projection(args.params, args.scenario, args.end_year)
+    run_projection(args.params, args.scenario, args.end_year,
+                   farinotti_path=args.thickness)

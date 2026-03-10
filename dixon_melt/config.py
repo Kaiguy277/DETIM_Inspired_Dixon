@@ -76,12 +76,27 @@ PSI_A = 0.75  # clear-sky atmospheric transmissivity (typical 0.6-0.9)
 TARGET_RESOLUTION = 50.0  # m, resample DEM to this for model runs
 NODATA = -9999.0
 
+# ── RGI Identifiers ───────────────────────────────────────────────
+RGI6_ID = 'RGI60-01.18059'
+RGI7_ID = 'RGI2000-v7.0-G-01-07538'
+
 # ── Ice dynamics (delta-h parameterization) ─────────────────────────
-# Huss et al. (2010) empirical coefficients for normalized elevation change
-# Pattern: most thinning at terminus, least at headwall
-DELTAH_A = -0.30   # terminus exponent
-DELTAH_B =  0.60   # mid-glacier
-DELTAH_C =  0.09   # headwall
+# Huss et al. (2010) HESS 14, 815-829, Figure 3b / Table equivalent.
+# Equation: delta_h = (h_r + a)^gamma + b*(h_r + a) + c
+# where h_r = (z_max - z) / (z_max - z_min), so h_r=0 at headwall, 1 at terminus.
+# Pattern: most thinning at terminus, least at headwall.
+# Coefficients by glacier size class:
+DELTAH_PARAMS = {
+    'large':  {'gamma': 6, 'a': -0.02, 'b': 0.12, 'c': 0.00},  # A > 20 km2
+    'medium': {'gamma': 4, 'a': -0.05, 'b': 0.19, 'c': 0.01},  # 5 < A < 20 km2
+    'small':  {'gamma': 2, 'a': -0.30, 'b': 0.60, 'c': 0.09},  # A < 5 km2
+}
+DELTAH_AREA_THRESHOLDS = (5.0, 20.0)  # km2, boundaries between size classes
+
+# ── Volume-area scaling (Bahr et al. 1997; Chen & Ohmura 1990) ─────
+# V [km3] = VA_C * A[km2]^VA_GAMMA  (mountain/valley glaciers)
+VA_C = 0.0340
+VA_GAMMA = 1.36
 
 # ── Routing (linear reservoir) ──────────────────────────────────────
 DEFAULT_ROUTING = dict(

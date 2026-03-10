@@ -7,6 +7,8 @@ __pycache__/
 # DEM rasters (large binary, not suited for git)
 *.tif
 *.tiff
+# Exception: Farinotti ice thickness is small (438 KB) and critical
+!data/ice_thickness/*.tif
 
 # Calibration logs (large, regenerable)
 calibration_output/calibration_log*.csv

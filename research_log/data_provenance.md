@@ -164,3 +164,61 @@ used in calibration with lower weight.
 loss in the early twenty-first century. Nature, 592, 726–731.
 
 **Note:** Area-weighted, accounts for 99.5% of glacier area measured.
+
+---
+
+## 7. Ice Thickness — Farinotti et al. (2019) Consensus
+
+| Field | Value |
+|-------|-------|
+| File | `data/ice_thickness/RGI60-01.18059_thickness.tif` |
+| Source | Farinotti et al. (2019), Nature Geoscience |
+| DOI (data) | 10.3929/ethz-b-000315707 |
+| RGI ID | RGI60-01.18059 |
+| Native resolution | 25 m |
+| CRS | EPSG:32605 (UTM Zone 5N) |
+| Extracted from | `composite_thickness_RGI60-01.zip` (Alaska, 223 MB) |
+| License | CC BY-NC-SA 4.0 |
+
+### Statistics (native 25m grid)
+| Metric | Value |
+|--------|-------|
+| Valid pixels (thickness > 0) | 63,741 |
+| Area covered | 39.8 km2 |
+| Min thickness | 7.7 m |
+| Max thickness | 419.2 m |
+| Mean thickness | 173.2 m |
+| Median thickness | 172.5 m |
+| Total volume | 6.901 km3 |
+
+### On model grid (100m)
+| Metric | Value |
+|--------|-------|
+| Glacier cells with thickness | 3,994 / 4,011 (99.6%) |
+| Mean thickness | 171.3 m |
+| Max thickness | 416.3 m |
+| Volume | 6.869 km3 |
+| V-A scaling ratio | 1.33 (Farinotti 33% above Bahr scaling) |
+
+### Method
+Consensus of up to 5 ice thickness models (Farinotti et al. 2019):
+ITMIX-based ensemble using surface velocity, mass conservation, and
+flow-dynamics inversion. Published accuracy: mean absolute error of
+~30% for individual glaciers (ITMIX2 validation).
+
+### Processing
+1. Downloaded from ETH Zurich Research Collection (2026-03-10)
+2. Extracted single glacier GeoTIFF from Region 01 archive
+3. Resampled to model grid (100m) via rasterio bilinear interpolation
+4. 17 edge cells with zero thickness filled with 10% of glacier mean
+5. Bedrock DEM computed as surface elevation minus ice thickness
+
+### Usage
+- Primary: glacier geometry evolution via delta-h parameterization (D-018)
+- Retreat criterion: cells deglaciate when ice thickness < 1m
+- Bedrock surface assumed fixed (no isostatic rebound at this scale)
+
+**Reference:** Farinotti, D., Huss, M., Fürst, J. J., Landmann, J.,
+Machguth, H., Maussion, F., & Pandit, A. (2019). A consensus estimate
+for the ice thickness distribution of all glaciers on Earth. Nature
+Geoscience, 12, 168–173.

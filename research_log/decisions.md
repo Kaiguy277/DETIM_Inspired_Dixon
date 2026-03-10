@@ -483,3 +483,63 @@ Phase 2 — MCMC (emcee):
   - Gardner, A.S. & Sharp, M.J. (2009). J. Climate, 22(2), 372-392.
   - Hock, R. (1999). J. Glaciol., 45(149), 101-111.
   - Braithwaite, R.J. (2008). J. Glaciol., 54(185), 349-354.
+
+## D-018: Glacier Dynamics Overhaul — Correct Delta-h + Ice Thickness
+
+**Date:** 2026-03-10
+**Decision:** Complete rewrite of `glacier_dynamics.py` to fix three
+compounding bugs and add ice thickness tracking for physically-based
+glacier retreat.
+
+**Bugs fixed:**
+  1. **Wrong size class:** Used small-glacier coefficients (a=-0.30,
+     b=0.60, c=0.09) with large-glacier exponent (gamma=6). Dixon at
+     ~40 km2 is a *large* glacier (>20 km2 threshold).
+  2. **Wrong h_r convention:** Code used z_norm = (z - z_min)/range
+     (0=terminus, 1=headwall) but the Huss equation expects h_r =
+     (z_max - z)/range (0=headwall, 1=terminus). This produced maximum
+     thinning at the headwall instead of the terminus — physically backwards.
+  3. **No ice thickness tracking:** Retreat criterion was heuristic
+     (single-year dh > 5m in bottom 10% of elevation range). Cells
+     losing 4m/yr for 10 years were never removed.
+
+**New implementation:**
+  1. All three Huss et al. (2010) size classes with correct coefficients:
+     - Large (A > 20 km2): gamma=6, a=-0.02, b=0.12, c=0.00
+     - Medium (5 < A < 20): gamma=4, a=-0.05, b=0.19, c=0.01
+     - Small (A < 5 km2): gamma=2, a=-0.30, b=0.60, c=0.09
+  2. Dynamic size class switching as glacier shrinks (hard switch at
+     area thresholds, following OGGM convention).
+  3. Ice thickness initialization: Farinotti et al. (2019) consensus
+     GeoTIFF if available (RGI60-01.18059), otherwise Bahr et al. (1997)
+     V-A scaling (V = 0.0340 * A^1.36, km3/km2) with parabolic
+     hypsometric distribution.
+  4. Bedrock DEM computed once (surface - thickness); cells deglaciate
+     when ice_thickness < 1m (exposed bedrock replaces surface).
+  5. Volume-area consistency check at each time step; warning if
+     modeled volume deviates > 3x from V-A prediction.
+  6. Full tracking: area, volume, mean thickness, size class, V-A ratio,
+     cells removed per year.
+
+**Validation (synthetic glacier tests):**
+  - V-A ratio = 1.000 at initialization (by construction)
+  - At -0.5 m w.e./yr, 4 km2 glacier loses 10% area in 20 years
+  - At -1.0 m w.e./yr, 34 km2 glacier transitions large→medium at ~75 yr
+  - Terminus cells deglaciate first (correct spatial pattern)
+
+**Files modified:**
+  - `dixon_melt/glacier_dynamics.py` — complete rewrite
+  - `dixon_melt/config.py` — added DELTAH_PARAMS dict, VA_C, VA_GAMMA, RGI IDs
+  - `run_projection.py` — updated for new API (ice thickness, bedrock, volume tracking)
+
+**Data needed:** Farinotti et al. (2019) consensus thickness for Dixon
+  (composite_thickness_RGI60-01.zip from ETH Zurich Research Collection,
+  DOI: 10.3929/ethz-b-000315707). Until downloaded, V-A scaling fallback
+  is used.
+
+**References:**
+  - Huss, M. et al. (2010). HESS, 14(5), 815-829.
+  - Bahr, D. B. et al. (1997). J. Geophys. Res., 102(B9), 20355-20362.
+  - Chen, J. & Ohmura, A. (1990). Ann. Glaciol., 14, 85-89.
+  - Farinotti, D. et al. (2019). Nature Geosci., 12, 168-173.
+  - Bahr, D. B. et al. (2015). Rev. Geophys., 53, 95-140.
