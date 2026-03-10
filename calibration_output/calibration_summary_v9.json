@@ -1,0 +1,38 @@
+{
+  "version": 9,
+  "fixes": [
+    "SNOTEL elevation corrected: 1230 ft = 375 m (D-013)",
+    "lapse_rate bounded [-7, -4] C/km (D-015)",
+    "k_wind removed from calibration (D-015)",
+    "precip_corr bounded [1.2, 4.0] (D-016)",
+    "r_ice upper bound widened to 5.0e-3",
+    "Single geodetic: 2000-2020 mean only (D-016)",
+    "Inverse-variance cost function + geodetic hard penalty (D-014)"
+  ],
+  "success": false,
+  "message": "Maximum number of iterations has been exceeded.",
+  "cost": 7.680558659722955,
+  "n_evaluations": 24516,
+  "wall_time_s": 4292.6538026332855,
+  "params": {
+    "MF": 7.642230649403896,
+    "MF_grad": -0.0021992491909595974,
+    "r_snow": 0.0012897829944189924,
+    "r_ice": 0.0013403158729752137,
+    "lapse_rate": -0.006828054957498836,
+    "precip_grad": 0.0008505790763560651,
+    "precip_corr": 1.2,
+    "T0": 0.513131261514578
+  },
+  "fixed_params": {
+    "k_wind": 0.0,
+    "ref_elev": 375.0
+  },
+  "config": {
+    "grid_res": 100.0,
+    "de_maxiter": 200,
+    "de_popsize": 15,
+    "geodetic_lambda": 50.0,
+    "cost_function": "inverse-variance (1/sigma^2) + geodetic hard penalty"
+  }
+}

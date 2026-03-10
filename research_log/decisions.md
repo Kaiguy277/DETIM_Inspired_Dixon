@@ -397,3 +397,89 @@ should be able to fit both with a single parameter set.
   1. Restore 2000-2020 geodetic period as sole geodetic constraint
   2. Drop 2000-2010 and 2010-2020 from calibration (validation only)
   3. Widen precip_corr upper bound from 3.0 to 4.0
+
+## D-017: Bayesian Ensemble Calibration (DE + MCMC)
+
+**Date:** 2026-03-09
+**Decision:** Replace single-optimum calibration with a two-phase Bayesian
+ensemble approach: differential evolution to find the MAP estimate, then
+MCMC sampling to generate a posterior distribution of parameter sets for
+projection uncertainty quantification.
+
+**Rationale — why single DE is insufficient for projections:**
+CAL-009 demonstrated the core equifinality problem: lapse_rate=-6.83 C/km
+with precip_corr=1.20 fits current observations but has compensating errors
+that diverge under warming. A single "best" parameter set cannot capture
+the structural uncertainty in how warming propagates across the glacier.
+
+For peak water projections under emission scenarios, we need not one parameter
+set but a **population of parameter sets** that are all consistent with
+observations. The spread in projections across this ensemble represents genuine
+uncertainty about the glacier's temperature sensitivity, accumulation rate,
+and rain/snow partitioning under future warming.
+
+**Literature precedent:**
+  - PyGEM (Rounce et al. 2020, J. Glaciol.): MCMC with PyMC, 10,000 steps,
+    informative priors on 2 parameters, ~100-200 posterior samples for projections
+  - Rounce et al. (2023, Science): Same approach scaled to 215,000 glaciers
+  - Schuster et al. (2023, Ann. Glaciol.): Documented equifinality in TI models;
+    recommended ensemble approaches for projection credibility
+  - Foreman-Mackey et al. (2013): emcee affine-invariant ensemble sampler
+
+**Method:**
+
+Phase 1 — Differential Evolution (MAP estimate):
+  - Find best-fit parameter set as starting point for MCMC
+  - Same DE settings as CAL-009 but with reduced parameter space
+
+Phase 2 — MCMC (emcee):
+  - 24 walkers initialized in tight ball around DE optimum
+  - 10,000 steps per walker (~240,000 evaluations)
+  - Log-likelihood: L = -0.5 × Σ((residual/σ)²) with same inverse-variance
+    structure as DE cost function
+  - Burn-in: first 2,000 steps discarded
+  - Thinning: by autocorrelation time for independent samples
+  - Convergence: acceptance fraction 0.2-0.5, Gelman-Rubin < 1.1
+
+**Parameter changes from CAL-009:**
+
+1. **Lapse rate fixed at -5.0 C/km** (removed from calibration). This is the
+   single most important change — eliminates the lapse/precip equifinality.
+   With lapse free, the optimizer exploited it to -6.83 (CAL-009). Literature:
+   Gardner & Sharp (2009) -4.9, Roth et al. (2023) -5.0 C/km. For projections,
+   the lapse rate determines how warming distributes across the 439-1637m
+   elevation range — it MUST be physically correct.
+
+2. **r_ice derived as 2.0 × r_snow** (removed from calibration). Hock (1999)
+   Table 4 shows r_ice/r_snow ratios of 1.5-3.0. CAL-009 converged to near-
+   equality (1.29 vs 1.34), eliminating the albedo feedback critical for
+   projections. Fixed ratio of 2.0 is mid-range of literature.
+
+3. **6 free parameters** (reduced from 8): MF, MF_grad, r_snow, precip_grad,
+   precip_corr, T0. Lower dimensionality improves MCMC convergence and reduces
+   equifinality.
+
+4. **Priors:**
+   - MF: Truncated Normal(5.0, 3.0) on [1, 12] — Braithwaite (2008)
+   - T0: Truncated Normal(1.5, 0.5) on [0.5, 3.0] — standard range
+   - All others: Uniform within bounds
+
+**Compute estimate:**
+  - Phase 1 (DE): ~60 min (fewer params → faster convergence)
+  - Phase 2 (MCMC, 8 cores): ~2-4 hours (emcee parallelizes across walkers)
+  - Projections (200 samples × 4 scenarios × 80 years): ~4 hours
+
+**Expected output:**
+  - ~200-500 independent posterior samples (parameter sets)
+  - Corner plot showing parameter correlations and marginal distributions
+  - Each sample physically defensible for projections
+  - Projection uncertainty envelope on peak water timing
+
+**References:**
+  - Rounce, D.R. et al. (2020). J. Glaciol., 66(255), 175-187.
+  - Rounce, D.R. et al. (2023). Science, 379(6627), 78-83.
+  - Schuster, L. et al. (2023). Ann. Glaciol., 1-16.
+  - Foreman-Mackey, D. et al. (2013). PASP, 125(925), 306.
+  - Gardner, A.S. & Sharp, M.J. (2009). J. Climate, 22(2), 372-392.
+  - Hock, R. (1999). J. Glaciol., 45(149), 101-111.
+  - Braithwaite, R.J. (2008). J. Glaciol., 54(185), 349-354.

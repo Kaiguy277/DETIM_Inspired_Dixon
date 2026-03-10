@@ -1,17 +1,18 @@
 """
-Comprehensive calibration of Dixon Glacier DETIM — v8.
+Bayesian ensemble calibration of Dixon Glacier DETIM — v10 (D-017).
 
-Changes (D-013, D-014, D-015, D-016):
-  - SNOTEL elevation corrected: 1230 ft = 375 m (D-013)
-  - k_wind removed (D-015)
-  - lapse_rate bounded [-7, -4] C/km (D-015)
-  - precip_corr bounded [1.2, 4.0] (D-016: 3.0-3.2x required for winter)
-  - r_ice upper bound widened to 5.0e-3
-  - Single geodetic: 2000-2020 mean only (D-016: sub-periods not independent)
-  - Cost function: inverse-variance + geodetic hard penalty (D-014)
-  - 8 calibrated parameters
+Two-phase approach following Rounce et al. (2020):
+  Phase 1: Differential evolution → MAP estimate
+  Phase 2: emcee MCMC → posterior ensemble for projections
 
-See research_log/decisions.md D-013 through D-016 for full rationale.
+Key changes from CAL-009:
+  - Lapse rate fixed at -5.0 C/km (Gardner & Sharp 2009, Roth et al. 2023)
+  - r_ice = 2.0 × r_snow (Hock 1999 Table 4 mid-range)
+  - 6 free parameters (down from 8)
+  - Informative priors on MF and T0
+  - MCMC sampling for projection uncertainty
+
+See research_log/decisions.md D-017 for full rationale.
 """
 import sys
 import os
@@ -22,8 +23,10 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from scipy.optimize import differential_evolution
+from scipy.stats import truncnorm
 import json
 import time
+import emcee
 
 # ── Paths ───────────────────────────────────────────────────────────
 PROJECT = Path('/home/kai/Documents/Opus46Dixon_FirstShot')
@@ -44,42 +47,77 @@ DE_TOL = 1e-4
 DE_MUTATION = (0.5, 1.0)
 DE_RECOMBINATION = 0.7
 
-# Fixed parameters (D-015)
-FIXED_K_WIND = 0.0          # Off; converged to ~0 in CAL-007
+# ── MCMC Configuration ─────────────────────────────────────────────
+MCMC_NWALKERS = 24       # 4× ndim (Foreman-Mackey et al. 2013 recommendation)
+MCMC_NSTEPS = 10000      # per walker (Rounce et al. 2020 precedent)
+MCMC_BURNIN = 2000       # minimum; will use max(2000, 2×autocorr_time)
+MCMC_INIT_SPREAD = 1e-3  # relative spread for walker initialization
+
+# ── Fixed parameters (D-017) ───────────────────────────────────────
+FIXED_LAPSE_RATE = -5.0e-3  # C/m (Gardner & Sharp 2009: -4.9, Roth 2023: -5.0)
+FIXED_RICE_RATIO = 2.0      # r_ice/r_snow (Hock 1999 Table 4 mid-range)
+FIXED_K_WIND = 0.0          # CAL-007 converged to ~0
 
 # Geodetic hard constraint penalty (D-014)
-GEODETIC_LAMBDA = 50.0  # penalty multiplier when geodetic exceeds uncertainty
+GEODETIC_LAMBDA = 50.0
 
-# Parameters and bounds (8 params — k_wind fixed, lapse_rate bounded)
-PARAM_NAMES = ['MF', 'MF_grad', 'r_snow', 'r_ice', 'lapse_rate',
-               'precip_grad', 'precip_corr', 'T0']
+# ── Parameters and bounds (6 free) ─────────────────────────────────
+PARAM_NAMES = ['MF', 'MF_grad', 'r_snow', 'precip_grad', 'precip_corr', 'T0']
 PARAM_BOUNDS = [
     (1.0, 12.0),            # MF (mm d-1 K-1)
-    (-0.01, 0.0),           # MF_grad (mm d-1 K-1 per m; negative = less melt higher)
-    (0.02e-3, 1.5e-3),      # r_snow
-    (0.05e-3, 5.0e-3),      # r_ice (widened upper bound)
-    (-7.0e-3, -4.0e-3),     # lapse_rate (C/m; literature: -4 to -7 C/km)
+    (-0.01, 0.0),           # MF_grad (mm d-1 K-1 per m)
+    (0.02e-3, 2.0e-3),      # r_snow (widened: CAL-010a hit 1.5e-3 upper bound)
     (0.0002, 0.006),        # precip_grad (fraction/m)
-    (1.2, 4.0),             # precip_corr (D-016: 3.0-3.2x required for winter)
-    (0.5, 3.0),             # T0 (C)
+    (1.2, 4.0),             # precip_corr
+    (0.0, 3.0),             # T0 (C) (lowered: CAL-010a hit 0.5 lower bound)
 ]
 
+# ── Prior distributions (D-017) ─────────────────────────────────────
+# MF: Truncated Normal(5.0, 3.0) on [1, 12] — Braithwaite (2008)
+# T0: Truncated Normal(1.5, 0.5) on [0.5, 3.0] — standard range
+# All others: Uniform within bounds
 
+def _truncnorm_logpdf(x, mu, sigma, lo, hi):
+    """Log-PDF of truncated normal distribution."""
+    a = (lo - mu) / sigma
+    b = (hi - mu) / sigma
+    return truncnorm.logpdf(x, a, b, loc=mu, scale=sigma)
+
+
+def log_prior(x):
+    """Compute log-prior for parameter vector x."""
+    params = {n: v for n, v in zip(PARAM_NAMES, x)}
+
+    # Check bounds (hard walls)
+    for name, val in params.items():
+        lo, hi = dict(zip(PARAM_NAMES, PARAM_BOUNDS))[name]
+        if val < lo or val > hi:
+            return -np.inf
+
+    lp = 0.0
+
+    # MF: Truncated Normal(5.0, 3.0) on [1, 12]
+    lp += _truncnorm_logpdf(params['MF'], 5.0, 3.0, 1.0, 12.0)
+
+    # T0: Truncated Normal(1.5, 0.5) on [0.0, 3.0]
+    lp += _truncnorm_logpdf(params['T0'], 1.5, 0.5, 0.0, 3.0)
+
+    # Others: Uniform (log-prior = -log(hi - lo), constant, can omit)
+    return lp
+
+
+# ── Data loading (same as v9) ───────────────────────────────────────
 def load_nuka_raw():
-    """Load raw Nuka SNOTEL data — temperature at 375m (1230 ft), precipitation."""
+    """Load raw Nuka SNOTEL data."""
     df = pd.read_csv(NUKA_PATH, parse_dates=['Date'])
     df = df.rename(columns={
         'Date': 'date',
         'Air Temperature Average (degF)': 'tavg_f',
         'Precipitation Accumulation (in) Start of Day Values': 'precip_accum_in',
     })
-
-    # Temperature: F -> C
     df['temperature'] = (df['tavg_f'] - 32) * 5 / 9
     bad = (df['temperature'] < -50) | (df['temperature'] > 40)
     df.loc[bad, 'temperature'] = np.nan
-
-    # Precipitation: cumulative inches -> daily mm
     if 'precip_accum_in' in df.columns:
         accum = df['precip_accum_in'].copy()
         diff = accum.diff()
@@ -90,7 +128,6 @@ def load_nuka_raw():
         df['precipitation'] = daily_in * 25.4
     else:
         df['precipitation'] = 0.0
-
     df = df.set_index('date').sort_index()
     df['temperature'] = df['temperature'].interpolate(method='linear', limit=3)
     return df[['temperature', 'precipitation']]
@@ -121,7 +158,7 @@ def prepare_period_arrays(climate, start_date, end_date):
 
 
 def build_calibration_targets(stakes, geodetic, climate):
-    """Build calibration targets including winter balance."""
+    """Build calibration targets (same structure as v9)."""
     targets = {
         'stake_annual': [],
         'stake_summer': [],
@@ -130,14 +167,12 @@ def build_calibration_targets(stakes, geodetic, climate):
         'winter_swe_obs': {},
     }
 
-    # Collect winter SWE observations
     for _, row in stakes[stakes['period_type'] == 'winter'].iterrows():
         yr = row['year']
         if yr not in targets['winter_swe_obs']:
             targets['winter_swe_obs'][yr] = {}
         targets['winter_swe_obs'][yr][row['site_id']] = row['mb_obs_mwe'] * 1000
 
-    # Annual targets
     for _, row in stakes[stakes['period_type'] == 'annual'].iterrows():
         yr = row['year']
         is_estimated = 'estimated' in str(row.get('notes', '')).lower()
@@ -152,7 +187,6 @@ def build_calibration_targets(stakes, geodetic, climate):
             'unc': unc, 'arrays': wy_arrays, 'estimated': is_estimated,
         })
 
-    # Summer targets
     for _, row in stakes[stakes['period_type'] == 'summer'].iterrows():
         yr = row['year']
         is_estimated = 'estimated' in str(row.get('notes', '')).lower()
@@ -171,7 +205,6 @@ def build_calibration_targets(stakes, geodetic, climate):
             'obs_winter_swe_mm': obs_swe,
         })
 
-    # Winter targets (NEW in v7)
     for _, row in stakes[stakes['period_type'] == 'winter'].iterrows():
         yr = row['year']
         is_estimated = 'estimated' in str(row.get('notes', '')).lower()
@@ -188,7 +221,6 @@ def build_calibration_targets(stakes, geodetic, climate):
             'unc': unc, 'arrays': period_arrays, 'estimated': is_estimated,
         })
 
-    # Geodetic targets
     good_years = {}
     for wy_year in range(2001, 2021):
         wy_data = climate.loc[f'{wy_year-1}-10-01':f'{wy_year}-09-30']
@@ -203,7 +235,6 @@ def build_calibration_targets(stakes, geodetic, climate):
 
     for _, row in geodetic.iterrows():
         period = row['period']
-        # D-016: Use only 2000-2020 mean; sub-periods for validation only
         if period != '2000-01-01_2020-01-01':
             print(f"    {period}: SKIPPED (validation only, D-016)")
             continue
@@ -216,8 +247,8 @@ def build_calibration_targets(stakes, geodetic, climate):
             'year_data': year_data,
         })
 
-    print(f"\nCalibration targets:")
     n_meas = lambda lst: len([t for t in lst if not t['estimated']])
+    print(f"\nCalibration targets:")
     print(f"  Stake annual: {len(targets['stake_annual'])} ({n_meas(targets['stake_annual'])} measured)")
     print(f"  Stake summer: {len(targets['stake_summer'])} ({n_meas(targets['stake_summer'])} measured)")
     print(f"  Stake winter: {len(targets['stake_winter'])} ({n_meas(targets['stake_winter'])} measured)")
@@ -227,24 +258,25 @@ def build_calibration_targets(stakes, geodetic, climate):
     return targets
 
 
-def compute_objective(x, fmodel, targets):
-    """Inverse-variance cost function with geodetic hard constraint (D-014).
-
-    Each observation is weighted by 1/sigma^2 (its reported uncertainty).
-    Geodetic observations that exceed their uncertainty bounds incur an
-    additional hard penalty (lambda * excess^2).
-    """
-    params = {name: val for name, val in zip(PARAM_NAMES, x)}
-    # Map lapse_rate -> internal_lapse for the model
-    params['internal_lapse'] = params.pop('lapse_rate')
+def _x_to_full_params(x):
+    """Convert 6-element vector to full parameter dict for the model."""
+    params = {n: v for n, v in zip(PARAM_NAMES, x)}
+    # Derived parameters
+    params['r_ice'] = FIXED_RICE_RATIO * params['r_snow']
+    params['internal_lapse'] = FIXED_LAPSE_RATE
     params['k_wind'] = FIXED_K_WIND
+    return params
 
-    # Physics penalty: r_ice should be >= r_snow
-    penalty = 0.0
-    if params['r_ice'] < params['r_snow']:
-        penalty += 5.0 * (params['r_snow'] - params['r_ice']) / params['r_snow']
 
-    all_chi2 = []  # all (residual/sigma)^2 terms
+def compute_chi2_terms(x, fmodel, targets):
+    """Compute individual chi-squared terms for the parameter vector.
+
+    Returns list of (residual/sigma)^2 values and the geodetic penalty.
+    Used by both the DE cost function and the MCMC log-likelihood.
+    """
+    params = _x_to_full_params(x)
+
+    all_chi2 = []
 
     # ── Stake annual (Oct 1, SWE=0) ────────────────────────────────
     annual_by_year = {}
@@ -288,7 +320,7 @@ def compute_objective(x, fmodel, targets):
             if not np.isnan(mod):
                 all_chi2.append(((mod - tgt['obs']) / tgt['unc']) ** 2)
 
-    # ── Geodetic MB (Oct 1, SWE=0) — with hard penalty ─────────────
+    # ── Geodetic MB (Oct 1, SWE=0) ────────────────────────────────
     geodetic_penalty = 0.0
     for gtgt in targets['geodetic']:
         if not gtgt['year_data']:
@@ -301,29 +333,71 @@ def compute_objective(x, fmodel, targets):
         if annual_bals:
             mean_bal = np.mean(annual_bals)
             residual = mean_bal - gtgt['obs']
-            # Inverse-variance term (same as stakes)
             all_chi2.append((residual / gtgt['unc']) ** 2)
-            # Hard penalty for exceeding uncertainty bounds
             excess = max(0.0, abs(residual) - gtgt['unc'])
             geodetic_penalty += GEODETIC_LAMBDA * (excess / gtgt['unc']) ** 2
+
+    return all_chi2, geodetic_penalty
+
+
+def compute_objective(x, fmodel, targets):
+    """Cost function for DE (same structure as v9 but with 6 params)."""
+    all_chi2, geodetic_penalty = compute_chi2_terms(x, fmodel, targets)
 
     if not all_chi2:
         return 100.0
 
-    # Total: sqrt of mean chi-squared + geodetic hard penalty + physics penalty
-    total = np.sqrt(np.mean(all_chi2)) + geodetic_penalty + penalty
+    total = np.sqrt(np.mean(all_chi2)) + geodetic_penalty
     return total
 
 
+def log_likelihood(x, fmodel, targets):
+    """Log-likelihood for MCMC: -0.5 * sum(chi2) + geodetic penalty."""
+    # Check bounds first
+    for val, (lo, hi) in zip(x, PARAM_BOUNDS):
+        if val < lo or val > hi:
+            return -np.inf
+
+    try:
+        all_chi2, geodetic_penalty = compute_chi2_terms(x, fmodel, targets)
+    except Exception:
+        return -np.inf
+
+    if not all_chi2:
+        return -np.inf
+
+    # Standard Gaussian log-likelihood
+    ll = -0.5 * np.sum(all_chi2)
+
+    # Geodetic hard penalty (converts to log-space)
+    if geodetic_penalty > 0:
+        ll -= geodetic_penalty
+
+    return ll
+
+
+def log_probability(x, fmodel, targets):
+    """Log-posterior = log-prior + log-likelihood."""
+    lp = log_prior(x)
+    if not np.isfinite(lp):
+        return -np.inf
+    ll = log_likelihood(x, fmodel, targets)
+    if not np.isfinite(ll):
+        return -np.inf
+    return lp + ll
+
+
+# ── Main ────────────────────────────────────────────────────────────
 def main():
     t_start = time.time()
     print("=" * 70)
-    print("DIXON GLACIER DETIM — CALIBRATION v9")
-    print("Single geodetic + wider precip_corr (D-016)")
+    print("DIXON GLACIER DETIM — CALIBRATION v10")
+    print("Bayesian Ensemble: DE (MAP) + MCMC (posterior)")
+    print("D-017: Fixed lapse, r_ice=2×r_snow, 6 free params")
     print("=" * 70)
 
     # ── Load data ───────────────────────────────────────────────────
-    print("Loading raw Nuka SNOTEL data...")
+    print("\nLoading raw Nuka SNOTEL data...")
     climate = load_nuka_raw()
     climate['temperature'] = climate['temperature'].ffill().fillna(0)
     climate['precipitation'] = climate['precipitation'].fillna(0)
@@ -343,17 +417,13 @@ def main():
     area_km2 = n_glacier * grid['cell_size']**2 / 1e6
     print(f"  Shape: {grid['elevation'].shape}, Glacier cells: {n_glacier}, Area: {area_km2:.1f} km2")
 
-    # Wind exposure stats
-    sx = grid['sx_norm'][grid['glacier_mask']]
-    print(f"  Sx_norm on glacier: min={sx.min():.3f}, max={sx.max():.3f}, std={sx.std():.3f}")
-
     print("\nPrecomputing potential direct radiation (365 DOYs)...")
     from dixon_melt.model import precompute_ipot
     t0 = time.time()
     ipot_table = precompute_ipot(grid, doy_range=range(1, 366), dt_hours=3.0)
     print(f"  Done in {time.time()-t0:.1f}s")
 
-    # ── Initialize FastDETIM ─────────────────────────────────────
+    # ── Initialize FastDETIM ────────────────────────────────────────
     from dixon_melt.fast_model import FastDETIM
     from dixon_melt import config
 
@@ -361,7 +431,7 @@ def main():
         grid, ipot_table,
         transfer_alpha=config.TRANSFER_ALPHA,
         transfer_beta=config.TRANSFER_BETA,
-        ref_elev=config.SNOTEL_ELEV,  # 375m (D-013: corrected from 1230m)
+        ref_elev=config.SNOTEL_ELEV,  # 375m (D-013)
         stake_names=config.STAKE_NAMES,
         stake_elevs=config.STAKE_ELEVS,
         stake_tol=config.STAKE_TOL,
@@ -373,7 +443,7 @@ def main():
     # ── JIT warm-up ─────────────────────────────────────────────────
     print("\nJIT compilation warm-up...")
     t0 = time.time()
-    test_x = np.array([5.0, -0.003, 0.3e-3, 0.6e-3, -5.0e-3, 0.001, 2.0, 1.5])
+    test_x = np.array([5.0, -0.003, 0.3e-3, 0.001, 2.0, 1.5])
     _ = compute_objective(test_x, fmodel, targets)
     print(f"  Done in {time.time()-t0:.1f}s")
 
@@ -383,83 +453,88 @@ def main():
     t_per_eval = (time.time() - t0) / 5
     print(f"  {t_per_eval*1000:.0f} ms per objective evaluation")
 
-    n_total_evals = DE_POPSIZE * len(PARAM_NAMES) * (DE_MAXITER + 1)
-    est_minutes = n_total_evals * t_per_eval / 60
-    print(f"  Estimated calibration time: {est_minutes:.0f} min for {n_total_evals} evaluations")
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 1: DIFFERENTIAL EVOLUTION (MAP ESTIMATE)
+    # ══════════════════════════════════════════════════════════════════
+    n_de_evals = DE_POPSIZE * len(PARAM_NAMES) * (DE_MAXITER + 1)
+    est_de_min = n_de_evals * t_per_eval / 60
 
-    # ── Run calibration ─────────────────────────────────────────────
     print(f"\n{'=' * 70}")
-    print(f"DIFFERENTIAL EVOLUTION")
+    print(f"PHASE 1: DIFFERENTIAL EVOLUTION (MAP estimate)")
+    print(f"{'=' * 70}")
     print(f"  Parameters: {len(PARAM_NAMES)}")
     print(f"  Population: {DE_POPSIZE} x {len(PARAM_NAMES)} = {DE_POPSIZE * len(PARAM_NAMES)}")
     print(f"  Max iterations: {DE_MAXITER}")
-    print(f"  Fixed: k_wind={FIXED_K_WIND}")
-    print(f"  ref_elev: {config.SNOTEL_ELEV} m (D-013: 1230 ft corrected)")
-    print(f"  Geodetic penalty lambda: {GEODETIC_LAMBDA}")
+    print(f"  Estimated time: {est_de_min:.0f} min for {n_de_evals} evaluations")
+    print(f"  Fixed: lapse_rate={FIXED_LAPSE_RATE*1000:.1f} C/km, "
+          f"r_ice/r_snow={FIXED_RICE_RATIO:.1f}, k_wind={FIXED_K_WIND}")
     print(f"  Bounds:")
     for name, (lo, hi) in zip(PARAM_NAMES, PARAM_BOUNDS):
         print(f"    {name:15s}: [{lo:.6f}, {hi:.6f}]")
-    print(f"  Cost function: inverse-variance (1/sigma^2) + geodetic hard penalty")
-    print(f"{'=' * 70}\n")
+    print(f"  Priors: MF~TN(5,3), T0~TN(1.5,0.5), others uniform")
+    print(f"  Cost: inverse-variance + geodetic hard penalty (lambda={GEODETIC_LAMBDA})")
+    print()
 
     eval_count = [0]
     best_cost = [np.inf]
-    log = []
+    de_log = []
 
-    def wrapper(x):
+    def de_wrapper(x):
         eval_count[0] += 1
         cost = compute_objective(x, fmodel, targets)
         if cost < best_cost[0]:
             best_cost[0] = cost
         params = {n: v for n, v in zip(PARAM_NAMES, x)}
-        log.append({**params, 'cost': cost, 'eval': eval_count[0]})
+        de_log.append({**params, 'cost': cost, 'eval': eval_count[0]})
         if eval_count[0] % 50 == 0:
             elapsed = time.time() - t_start
             print(f"  eval {eval_count[0]:5d} | cost={cost:.3f} | best={best_cost[0]:.3f} | "
-                  f"MF={params['MF']:.2f} lr={params['lapse_rate']*1e3:.1f} "
-                  f"pc={params['precip_corr']:.2f} T0={params['T0']:.1f} | {elapsed:.0f}s")
+                  f"MF={params['MF']:.2f} pc={params['precip_corr']:.2f} "
+                  f"T0={params['T0']:.1f} r_s={params['r_snow']*1e3:.3f} | {elapsed:.0f}s")
         return cost
 
-    result = differential_evolution(
-        wrapper, bounds=PARAM_BOUNDS,
+    de_result = differential_evolution(
+        de_wrapper, bounds=PARAM_BOUNDS,
         maxiter=DE_MAXITER, popsize=DE_POPSIZE, seed=DE_SEED,
         tol=DE_TOL, mutation=DE_MUTATION, recombination=DE_RECOMBINATION,
         init='latinhypercube', disp=True, workers=1,
     )
 
-    elapsed = time.time() - t_start
-    best_params = {name: val for name, val in zip(PARAM_NAMES, result.x)}
+    map_params = {name: val for name, val in zip(PARAM_NAMES, de_result.x)}
+    de_elapsed = time.time() - t_start
 
     print(f"\n{'=' * 70}")
-    print(f"CALIBRATION v9 COMPLETE")
+    print(f"PHASE 1 COMPLETE — MAP estimate")
     print(f"{'=' * 70}")
-    print(f"  Success: {result.success}")
-    print(f"  Message: {result.message}")
-    print(f"  Final cost: {result.fun:.4f}")
+    print(f"  Success: {de_result.success}")
+    print(f"  Message: {de_result.message}")
+    print(f"  Final cost: {de_result.fun:.4f}")
     print(f"  Evaluations: {eval_count[0]}")
-    print(f"  Wall time: {elapsed:.0f}s ({elapsed/60:.1f} min)")
-    print(f"\n  Optimized parameters:")
-    for k, v in best_params.items():
+    print(f"  Wall time: {de_elapsed:.0f}s ({de_elapsed/60:.1f} min)")
+    print(f"\n  MAP parameters:")
+    for k, v in map_params.items():
         if 'r_' in k:
             print(f"    {k:15s}: {v:.6f} ({v*1000:.3f} x 10^-3)")
-        elif 'lapse' in k:
-            print(f"    {k:15s}: {v:.5f} (= {v*1000:.2f} C/km)")
-        elif 'MF_grad' in k:
-            print(f"    {k:15s}: {v:.6f} (= {v*1000:.3f} per km)")
         else:
             print(f"    {k:15s}: {v:.4f}")
-    print(f"\n  Fixed parameters:")
-    print(f"    k_wind         : {FIXED_K_WIND:.4f}")
-    print(f"    ref_elev       : {config.SNOTEL_ELEV:.1f} m (1230 ft)")
+    print(f"  Derived: r_ice = {FIXED_RICE_RATIO * map_params['r_snow']*1000:.3f} x 10^-3")
+    print(f"  Fixed: lapse_rate = {FIXED_LAPSE_RATE*1000:.1f} C/km")
 
-    # ── Validation ──────────────────────────────────────────────────
-    # Map lapse_rate -> internal_lapse for model runs
-    run_params = dict(best_params)
-    run_params['internal_lapse'] = run_params.pop('lapse_rate')
-    run_params['k_wind'] = FIXED_K_WIND
+    # Save DE outputs
+    with open(OUTPUT_DIR / 'best_params_v10.json', 'w') as f:
+        save_params = dict(map_params)
+        save_params['r_ice'] = FIXED_RICE_RATIO * map_params['r_snow']
+        save_params['lapse_rate'] = FIXED_LAPSE_RATE
+        save_params['k_wind'] = FIXED_K_WIND
+        json.dump(save_params, f, indent=2)
+
+    pd.DataFrame(de_log).to_csv(OUTPUT_DIR / 'calibration_log_v10_de.csv', index=False)
+
+    # ── Validation at MAP (same as v9) ──────────────────────────────
+    run_params = _x_to_full_params(de_result.x)
 
     print(f"\n{'=' * 70}")
-    print("VALIDATION")
+    print("MAP VALIDATION")
     print(f"{'=' * 70}")
 
     for yr in [2023, 2024, 2025]:
@@ -475,7 +550,6 @@ def main():
             obs_rows = stakes[(stakes['period_type'] == ptype) & (stakes['year'] == yr)]
             if len(obs_rows) == 0:
                 continue
-            # For winter/summer, run the specific period
             if ptype != 'annual':
                 for _, obs_row in obs_rows.iterrows():
                     site = obs_row['site_id']
@@ -499,14 +573,21 @@ def main():
             else:
                 for site in ['ABL', 'ELA', 'ACC']:
                     mod = r['stake_balances'].get(site, np.nan)
-                    obs_row = obs_rows[obs_rows['site_id'] == site]
-                    obs = obs_row['mb_obs_mwe'].values[0] if len(obs_row) > 0 else np.nan
+                    obs_row_s = obs_rows[obs_rows['site_id'] == site]
+                    obs = obs_row_s['mb_obs_mwe'].values[0] if len(obs_row_s) > 0 else np.nan
                     diff = mod - obs if not (np.isnan(mod) or np.isnan(obs)) else np.nan
                     obs_str = f"{obs:+.2f}" if not np.isnan(obs) else "  n/a"
                     diff_str = f"{diff:+.2f}" if not np.isnan(diff) else "  n/a"
                     print(f"      {site} annual: mod={mod:+.2f}, obs={obs_str}, res={diff_str}")
 
+    # Geodetic validation
     print(f"\n  Geodetic MB (calibration target):")
+    good_years = {}
+    for wy_year in range(2001, 2021):
+        arrays = prepare_water_year_arrays(climate, wy_year)
+        if arrays is not None:
+            good_years[wy_year] = arrays
+
     for gtgt in targets['geodetic']:
         if not gtgt['year_data']:
             continue
@@ -519,14 +600,8 @@ def main():
         print(f"    {gtgt['period']}: modeled={mean_bal:+.3f}, observed={gtgt['obs']:+.3f} "
               f"+/- {gtgt['unc']:.3f} ({len(annual_bals)} years)")
 
-    # Sub-period validation (D-016: not in cost function)
     print(f"\n  Geodetic sub-periods (validation only):")
     geodetic_all = pd.read_csv(GEODETIC_PATH)
-    good_years = {}
-    for wy_year in range(2001, 2021):
-        arrays = prepare_water_year_arrays(climate, wy_year)
-        if arrays is not None:
-            good_years[wy_year] = arrays
     for _, row in geodetic_all.iterrows():
         period = row['period']
         if period == '2000-01-01_2020-01-01':
@@ -546,46 +621,196 @@ def main():
         print(f"    {period}: modeled={mean_bal:+.3f}, observed={row['dmdtda']:+.3f} "
               f"+/- {row['err_dmdtda']:.3f} ({len(bals)} years)")
 
-    # ── Save outputs ────────────────────────────────────────────────
-    with open(OUTPUT_DIR / 'best_params_v9.json', 'w') as f:
-        json.dump(best_params, f, indent=2)
+    # ══════════════════════════════════════════════════════════════════
+    # PHASE 2: MCMC SAMPLING (POSTERIOR ENSEMBLE)
+    # ══════════════════════════════════════════════════════════════════
+    mcmc_start = time.time()
+    ndim = len(PARAM_NAMES)
+    est_mcmc_evals = MCMC_NWALKERS * MCMC_NSTEPS
+    est_mcmc_hrs = est_mcmc_evals * t_per_eval / 3600
 
-    log_df = pd.DataFrame(log)
-    log_df.to_csv(OUTPUT_DIR / 'calibration_log_v9.csv', index=False)
+    print(f"\n{'=' * 70}")
+    print(f"PHASE 2: MCMC SAMPLING (emcee)")
+    print(f"{'=' * 70}")
+    print(f"  Walkers: {MCMC_NWALKERS}")
+    print(f"  Steps: {MCMC_NSTEPS}")
+    print(f"  Total evaluations: {est_mcmc_evals}")
+    print(f"  Estimated time: {est_mcmc_hrs:.1f} hours (single core)")
+    print(f"  Burn-in: {MCMC_BURNIN} steps minimum")
+    print()
 
+    # Initialize walkers around MAP estimate
+    map_x = de_result.x.copy()
+    pos = np.empty((MCMC_NWALKERS, ndim))
+    for i in range(MCMC_NWALKERS):
+        while True:
+            # Small random perturbation around MAP
+            proposal = map_x * (1.0 + MCMC_INIT_SPREAD * np.random.randn(ndim))
+            # Ensure within bounds
+            in_bounds = True
+            for j, (lo, hi) in enumerate(PARAM_BOUNDS):
+                if proposal[j] < lo or proposal[j] > hi:
+                    in_bounds = False
+                    break
+            if in_bounds:
+                pos[i] = proposal
+                break
+
+    # Set up sampler (single-core — numba handles inner parallelism)
+    sampler = emcee.EnsembleSampler(
+        MCMC_NWALKERS, ndim, log_probability,
+        args=(fmodel, targets),
+    )
+
+    # Run MCMC with progress reporting
+    print("  Running MCMC chain...")
+    step_count = 0
+    for sample in sampler.sample(pos, iterations=MCMC_NSTEPS, progress=False):
+        step_count += 1
+        if step_count % 500 == 0:
+            elapsed = time.time() - mcmc_start
+            accept_frac = np.mean(sampler.acceptance_fraction)
+            rate = step_count / elapsed if elapsed > 0 else 0
+            eta = (MCMC_NSTEPS - step_count) / rate / 3600 if rate > 0 else 0
+            print(f"    step {step_count:5d}/{MCMC_NSTEPS} | "
+                  f"accept={accept_frac:.3f} | "
+                  f"elapsed={elapsed/60:.1f}min | "
+                  f"ETA={eta:.1f}hrs")
+
+    mcmc_elapsed = time.time() - mcmc_start
+
+    print(f"\n  MCMC complete in {mcmc_elapsed:.0f}s ({mcmc_elapsed/3600:.1f} hours)")
+    print(f"  Mean acceptance fraction: {np.mean(sampler.acceptance_fraction):.3f}")
+
+    # ── Convergence diagnostics ─────────────────────────────────────
+    print(f"\n  Convergence diagnostics:")
+    try:
+        tau = sampler.get_autocorr_time(quiet=True)
+        print(f"    Autocorrelation times: {', '.join(f'{t:.0f}' for t in tau)}")
+        print(f"    Max tau: {np.max(tau):.0f}")
+        print(f"    Chain length / max(tau): {MCMC_NSTEPS / np.max(tau):.0f}x "
+              f"(want >50x)")
+        burnin = int(2 * np.max(tau))
+        thin = int(0.5 * np.min(tau))
+        thin = max(thin, 1)
+    except emcee.autocorr.AutocorrError:
+        print("    WARNING: Autocorrelation time estimate unreliable")
+        print("    Using default burn-in and thinning")
+        burnin = MCMC_BURNIN
+        thin = 10
+        tau = None
+
+    burnin = max(burnin, MCMC_BURNIN)
+    print(f"    Burn-in: {burnin} steps")
+    print(f"    Thinning: every {thin} steps")
+
+    # ── Extract posterior samples ───────────────────────────────────
+    flat_samples = sampler.get_chain(discard=burnin, thin=thin, flat=True)
+    n_samples = len(flat_samples)
+    print(f"    Independent posterior samples: {n_samples}")
+
+    # Save full chain
+    chain = sampler.get_chain()  # shape: (nsteps, nwalkers, ndim)
+    np.save(OUTPUT_DIR / 'mcmc_chain_v10.npy', chain)
+
+    # Save log-probability chain
+    log_prob = sampler.get_log_prob()
+    np.save(OUTPUT_DIR / 'mcmc_logprob_v10.npy', log_prob)
+
+    # Save posterior samples as CSV
+    posterior_df = pd.DataFrame(flat_samples, columns=PARAM_NAMES)
+    # Add derived parameters
+    posterior_df['r_ice'] = FIXED_RICE_RATIO * posterior_df['r_snow']
+    posterior_df['lapse_rate'] = FIXED_LAPSE_RATE
+    posterior_df.to_csv(OUTPUT_DIR / 'posterior_samples_v10.csv', index=False)
+
+    # ── Posterior summary ───────────────────────────────────────────
+    print(f"\n{'=' * 70}")
+    print("POSTERIOR SUMMARY")
+    print(f"{'=' * 70}")
+    print(f"  {'Parameter':15s} {'Median':>10s} {'16th':>10s} {'84th':>10s} {'MAP':>10s}")
+    print(f"  {'-'*55}")
+    for i, name in enumerate(PARAM_NAMES):
+        q16, q50, q84 = np.percentile(flat_samples[:, i], [16, 50, 84])
+        map_val = map_params[name]
+        if 'r_' in name:
+            print(f"  {name:15s} {q50*1e3:10.3f} {q16*1e3:10.3f} {q84*1e3:10.3f} {map_val*1e3:10.3f}  (x10^-3)")
+        else:
+            print(f"  {name:15s} {q50:10.4f} {q16:10.4f} {q84:10.4f} {map_val:10.4f}")
+
+    # ── Corner plot ─────────────────────────────────────────────────
+    try:
+        import corner
+        labels = [
+            r'MF (mm d$^{-1}$ K$^{-1}$)',
+            r'MF$_{\rm grad}$ (mm d$^{-1}$ K$^{-1}$ m$^{-1}$)',
+            r'$r_{\rm snow}$ (mm m$^2$ W$^{-1}$ d$^{-1}$ K$^{-1}$)',
+            r'$\gamma_p$ (m$^{-1}$)',
+            r'$C_p$',
+            r'$T_0$ ($^\circ$C)',
+        ]
+        fig = corner.corner(
+            flat_samples, labels=labels,
+            quantiles=[0.16, 0.5, 0.84],
+            show_titles=True, title_kwargs={"fontsize": 10},
+            truths=de_result.x,
+        )
+        fig.savefig(OUTPUT_DIR / 'corner_plot_v10.png', dpi=150, bbox_inches='tight')
+        print(f"\n  Corner plot saved to {OUTPUT_DIR / 'corner_plot_v10.png'}")
+    except Exception as e:
+        print(f"\n  Corner plot failed: {e}")
+
+    # ── Save summary ────────────────────────────────────────────────
+    total_elapsed = time.time() - t_start
     summary = {
-        'version': 9,
+        'version': 10,
+        'method': 'DE (MAP) + emcee MCMC (posterior ensemble)',
+        'decision': 'D-017',
         'fixes': [
-            'SNOTEL elevation corrected: 1230 ft = 375 m (D-013)',
-            'lapse_rate bounded [-7, -4] C/km (D-015)',
-            'k_wind removed from calibration (D-015)',
-            'precip_corr bounded [1.2, 4.0] (D-016)',
-            'r_ice upper bound widened to 5.0e-3',
-            'Single geodetic: 2000-2020 mean only (D-016)',
-            'Inverse-variance cost function + geodetic hard penalty (D-014)',
+            'Lapse rate fixed at -5.0 C/km (Gardner & Sharp 2009)',
+            'r_ice = 2.0 x r_snow (Hock 1999 Table 4)',
+            'k_wind removed (D-015)',
+            '6 free parameters (reduced from 8)',
+            'Informative priors: MF~TN(5,3), T0~TN(1.5,0.5)',
+            'MCMC posterior sampling with emcee',
         ],
-        'success': bool(result.success),
-        'message': result.message,
-        'cost': float(result.fun),
-        'n_evaluations': eval_count[0],
-        'wall_time_s': elapsed,
-        'params': best_params,
+        'de': {
+            'success': bool(de_result.success),
+            'message': de_result.message,
+            'cost': float(de_result.fun),
+            'n_evaluations': eval_count[0],
+            'wall_time_s': de_elapsed,
+            'map_params': map_params,
+        },
+        'mcmc': {
+            'n_walkers': MCMC_NWALKERS,
+            'n_steps': MCMC_NSTEPS,
+            'burn_in': burnin,
+            'thin': thin,
+            'n_posterior_samples': n_samples,
+            'mean_acceptance_fraction': float(np.mean(sampler.acceptance_fraction)),
+            'autocorr_times': tau.tolist() if tau is not None else None,
+            'wall_time_s': mcmc_elapsed,
+        },
         'fixed_params': {
+            'lapse_rate': FIXED_LAPSE_RATE,
+            'r_ice_ratio': FIXED_RICE_RATIO,
             'k_wind': FIXED_K_WIND,
-            'ref_elev': config.SNOTEL_ELEV,
+            'ref_elev': float(config.SNOTEL_ELEV),
         },
-        'config': {
-            'grid_res': GRID_RES,
-            'de_maxiter': DE_MAXITER,
-            'de_popsize': DE_POPSIZE,
-            'geodetic_lambda': GEODETIC_LAMBDA,
-            'cost_function': 'inverse-variance (1/sigma^2) + geodetic hard penalty',
-        },
+        'total_wall_time_s': total_elapsed,
     }
-    with open(OUTPUT_DIR / 'calibration_summary_v9.json', 'w') as f:
-        json.dump(summary, f, indent=2)
+    with open(OUTPUT_DIR / 'calibration_summary_v10.json', 'w') as f:
+        json.dump(summary, f, indent=2, default=str)
 
-    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v9)")
+    print(f"\n{'=' * 70}")
+    print(f"CALIBRATION v10 COMPLETE")
+    print(f"{'=' * 70}")
+    print(f"  Total wall time: {total_elapsed:.0f}s ({total_elapsed/3600:.1f} hours)")
+    print(f"  DE evaluations: {eval_count[0]}")
+    print(f"  MCMC evaluations: {MCMC_NWALKERS * MCMC_NSTEPS}")
+    print(f"  Posterior samples: {n_samples}")
+    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v10)")
     print("Done!")
 
 

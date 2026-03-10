@@ -1,0 +1,52 @@
+{
+  "version": 10,
+  "method": "DE (MAP) + emcee MCMC (posterior ensemble)",
+  "decision": "D-017",
+  "fixes": [
+    "Lapse rate fixed at -5.0 C/km (Gardner & Sharp 2009)",
+    "r_ice = 2.0 x r_snow (Hock 1999 Table 4)",
+    "k_wind removed (D-015)",
+    "6 free parameters (reduced from 8)",
+    "Informative priors: MF~TN(5,3), T0~TN(1.5,0.5)",
+    "MCMC posterior sampling with emcee"
+  ],
+  "de": {
+    "success": false,
+    "message": "Maximum number of iterations has been exceeded.",
+    "cost": 7.702411774486646,
+    "n_evaluations": 18251,
+    "wall_time_s": 3100.370555639267,
+    "map_params": {
+      "MF": 7.04935158737162,
+      "MF_grad": -0.003902996310807716,
+      "r_snow": 0.00197427113859266,
+      "precip_grad": 0.0005558916092656347,
+      "precip_corr": 1.6441441366910978,
+      "T0": 0.0013517085174810368
+    }
+  },
+  "mcmc": {
+    "n_walkers": 24,
+    "n_steps": 10000,
+    "burn_in": 2000,
+    "thin": 69,
+    "n_posterior_samples": 2760,
+    "mean_acceptance_fraction": 0.3730125,
+    "autocorr_times": [
+      167.34557187439484,
+      165.3264256619164,
+      140.36664369220483,
+      265.9695784740879,
+      259.224571634498,
+      138.48008355746882
+    ],
+    "wall_time_s": 30157.82003879547
+  },
+  "fixed_params": {
+    "lapse_rate": -0.005,
+    "r_ice_ratio": 2.0,
+    "k_wind": 0.0,
+    "ref_elev": 375.0
+  },
+  "total_wall_time_s": 33261.05964112282
+}
