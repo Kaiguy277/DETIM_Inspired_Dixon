@@ -41,7 +41,11 @@ OUTPUT_DIR = PROJECT / 'projection_output'
 
 def load_params(path):
     with open(path) as f:
-        return json.load(f)
+        params = json.load(f)
+    # Map param names: calibration saves 'lapse_rate', FastDETIM expects 'internal_lapse'
+    if 'lapse_rate' in params and 'internal_lapse' not in params:
+        params['internal_lapse'] = params['lapse_rate']
+    return params
 
 
 def run_single_gcm(fmodel, gcm_climate, ice_thickness_init, bedrock, grid,

@@ -3,128 +3,123 @@ Download and extract CMIP6 climate projections for Dixon Glacier.
 
 Downloads daily temperature and precipitation from NASA NEX-GDDP-CMIP6
 (hosted on AWS S3, no authentication required). For each GCM/scenario/year,
-downloads the full global NetCDF, extracts the single grid cell nearest to
-Dixon Glacier (59.66N, 150.88W), saves the pixel time series to a local
-CSV, and deletes the NetCDF.
+downloads the global NetCDF, extracts the single grid cell nearest to
+Dixon Glacier (59.66N, 150.88W), saves to a local CSV, and deletes.
+
+Uses batch downloading: downloads N files concurrently with curl, then
+extracts pixels sequentially (avoids xarray/HDF5 threading issues).
 
 Output: data/cmip6/dixon_{gcm}_{scenario}.csv
-  Columns: date, temperature (C), precipitation (mm/day)
 
 Usage:
-    python download_cmip6.py [--gcms ACCESS-CM2 MRI-ESM2-0 ...]
+    python download_cmip6.py [--gcms ACCESS-CM2 ...]
                              [--scenarios ssp126 ssp245 ssp585]
-                             [--years 2025 2100]
-
-Reference: Thrasher et al. (2022), NEX-GDDP-CMIP6, NASA.
+                             [--parallel 4]
 """
 import subprocess
-import os
 import sys
 import argparse
 import numpy as np
+import pandas as pd
 from pathlib import Path
 
 PROJECT = Path('/home/kai/Documents/Opus46Dixon_FirstShot')
 CMIP6_DIR = PROJECT / 'data' / 'cmip6'
 S3_BASE = 'https://nex-gddp-cmip6.s3.us-west-2.amazonaws.com/NEX-GDDP-CMIP6'
 
-# Dixon Glacier target coordinates
 DIXON_LAT = 59.66
-DIXON_LON_360 = 360.0 - 150.88  # NEX-GDDP uses 0-360 longitude
+DIXON_LON_360 = 360.0 - 150.88
 
-# GCMs selected for multi-model ensemble: chosen for good performance in
-# high-latitude maritime climates and availability across all 3 SSPs.
-# 5 GCMs following Rounce et al. (2023) approach of using a representative
-# subset rather than all available models.
 DEFAULT_GCMS = [
-    'ACCESS-CM2',       # Australian, good Arctic performance
-    'EC-Earth3',        # European consortium, high resolution
-    'MPI-ESM1-2-HR',    # German, high resolution
-    'MRI-ESM2-0',       # Japanese, good precip
-    'NorESM2-MM',       # Norwegian, designed for high latitudes
+    'ACCESS-CM2',
+    'EC-Earth3',
+    'MPI-ESM1-2-HR',
+    'MRI-ESM2-0',
+    'NorESM2-MM',
 ]
-
-# NEX-GDDP-CMIP6 has SSP1-2.6, SSP2-4.5, SSP5-8.5 (no SSP3-7.0)
 DEFAULT_SCENARIOS = ['ssp126', 'ssp245', 'ssp585']
-
-# Ensemble member (r1i1p1f1 for all default GCMs)
 ENSEMBLE = 'r1i1p1f1'
 
 
 def extract_pixel(nc_path, variable):
-    """Extract the Dixon grid cell from a global NetCDF file.
-
-    Returns (dates, values) where values are in C (tas) or mm/day (pr).
-    """
+    """Extract Dixon pixel from global NetCDF. Returns (dates, values)."""
     import xarray as xr
-
     ds = xr.open_dataset(nc_path)
     point = ds.sel(lat=DIXON_LAT, lon=DIXON_LON_360, method='nearest')
-
     dates = point['time'].values
     values = point[variable].values.astype(np.float64)
-
     if variable == 'tas':
-        values -= 273.15  # K -> C
+        values -= 273.15
     elif variable == 'pr':
-        values *= 86400.0  # kg/m2/s -> mm/day
-
+        values *= 86400.0
     ds.close()
     return dates, values
 
 
-def download_and_extract(gcm, scenario, year, variable, tmp_dir):
-    """Download one NetCDF, extract pixel, return (dates, values), delete file."""
-    filename = f'{variable}_day_{gcm}_{scenario}_{ENSEMBLE}_gn_{year}.nc'
-    url = f'{S3_BASE}/{gcm}/{scenario}/{ENSEMBLE}/{variable}/{filename}'
-    tmp_file = tmp_dir / filename
+def download_gcm_scenario(gcm, scenario, year_start, year_end, n_parallel=4):
+    """Download all years for one GCM/scenario.
 
-    # Download with curl
-    result = subprocess.run(
-        ['curl', '-s', '-f', '-o', str(tmp_file), url],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        print(f'    SKIP {variable} {year}: download failed')
-        return None, None
-
-    try:
-        dates, values = extract_pixel(str(tmp_file), variable)
-    finally:
-        tmp_file.unlink(missing_ok=True)
-
-    return dates, values
-
-
-def download_gcm_scenario(gcm, scenario, year_start, year_end):
-    """Download all years for one GCM/scenario combination."""
-    import pandas as pd
-
+    Strategy: process in batches of n_parallel years.
+    Each batch: download 2*n_parallel files (tas+pr) concurrently via
+    background curl processes, then extract pixels sequentially, then delete.
+    """
     out_file = CMIP6_DIR / f'dixon_{gcm}_{scenario}.csv'
     if out_file.exists():
-        print(f'  {gcm}/{scenario}: already exists, skipping')
+        n = sum(1 for _ in open(out_file)) - 1
+        print(f'  {gcm}/{scenario}: exists ({n} days), skipping')
         return
 
     tmp_dir = CMIP6_DIR / 'tmp'
     tmp_dir.mkdir(exist_ok=True)
 
-    all_dates = []
-    all_tas = []
-    all_pr = []
+    years = list(range(year_start, year_end + 1))
+    all_dates, all_tas, all_pr = [], [], []
+    done = 0
 
-    for year in range(year_start, year_end + 1):
-        sys.stdout.write(f'\r  {gcm}/{scenario}: {year}')
+    # Process in batches
+    batch_size = n_parallel
+    for batch_start in range(0, len(years), batch_size):
+        batch_years = years[batch_start:batch_start + batch_size]
+
+        # 1) Launch all downloads for this batch concurrently
+        procs = []
+        files_to_extract = []
+        for year in batch_years:
+            for var in ['tas', 'pr']:
+                fname = f'{var}_day_{gcm}_{scenario}_{ENSEMBLE}_gn_{year}.nc'
+                url = f'{S3_BASE}/{gcm}/{scenario}/{ENSEMBLE}/{var}/{fname}'
+                local = tmp_dir / f'{var}_{year}.nc'
+                p = subprocess.Popen(
+                    ['curl', '-s', '-f', '-o', str(local), url],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                procs.append(p)
+                files_to_extract.append((year, var, local))
+
+        # 2) Wait for all downloads to finish
+        for p in procs:
+            p.wait()
+
+        # 3) Extract pixels sequentially (safe for xarray/HDF5)
+        for year, var, local in files_to_extract:
+            if not local.exists():
+                continue
+            try:
+                dates, values = extract_pixel(str(local), var)
+                if var == 'tas':
+                    all_dates.extend(dates)
+                    all_tas.extend(values)
+                else:
+                    all_pr.extend(values)
+            except Exception as e:
+                print(f'\n    WARN: {var}/{year}: {e}')
+            finally:
+                local.unlink(missing_ok=True)
+
+        done += len(batch_years)
+        pct = 100 * done / len(years)
+        sys.stdout.write(f'\r  {gcm}/{scenario}: {done}/{len(years)} years ({pct:.0f}%)')
         sys.stdout.flush()
-
-        dates_t, tas = download_and_extract(gcm, scenario, year, 'tas', tmp_dir)
-        dates_p, pr = download_and_extract(gcm, scenario, year, 'pr', tmp_dir)
-
-        if dates_t is None or dates_p is None:
-            continue
-
-        all_dates.extend(dates_t)
-        all_tas.extend(tas)
-        all_pr.extend(pr)
 
     print()
 
@@ -132,72 +127,22 @@ def download_gcm_scenario(gcm, scenario, year_start, year_end):
         print(f'    WARNING: no data for {gcm}/{scenario}')
         return
 
+    # Ensure tas and pr align
+    n = min(len(all_dates), len(all_tas), len(all_pr))
     df = pd.DataFrame({
-        'date': all_dates,
-        'temperature': all_tas,
-        'precipitation': all_pr,
+        'date': all_dates[:n],
+        'temperature': all_tas[:n],
+        'precipitation': all_pr[:n],
     })
     df['date'] = pd.to_datetime(df['date'])
     df = df.sort_values('date').reset_index(drop=True)
-
     df.to_csv(out_file, index=False)
-    print(f'    Saved {len(df)} days to {out_file.name}')
+    print(f'    Saved {len(df)} days ({len(df)/365:.0f} yrs) to {out_file.name}')
 
-    # Cleanup
     try:
         tmp_dir.rmdir()
     except OSError:
         pass
-
-
-def download_historical(gcm, year_start=1990, year_end=2014):
-    """Download historical period for bias correction."""
-    import pandas as pd
-
-    out_file = CMIP6_DIR / f'dixon_{gcm}_historical.csv'
-    if out_file.exists():
-        print(f'  {gcm}/historical: already exists, skipping')
-        return
-
-    tmp_dir = CMIP6_DIR / 'tmp'
-    tmp_dir.mkdir(exist_ok=True)
-
-    all_dates = []
-    all_tas = []
-    all_pr = []
-
-    for year in range(year_start, year_end + 1):
-        sys.stdout.write(f'\r  {gcm}/historical: {year}')
-        sys.stdout.flush()
-
-        dates_t, tas = download_and_extract(
-            gcm, 'historical', year, 'tas', tmp_dir)
-        dates_p, pr = download_and_extract(
-            gcm, 'historical', year, 'pr', tmp_dir)
-
-        if dates_t is None or dates_p is None:
-            continue
-
-        all_dates.extend(dates_t)
-        all_tas.extend(tas)
-        all_pr.extend(pr)
-
-    print()
-
-    if len(all_dates) == 0:
-        print(f'    WARNING: no data for {gcm}/historical')
-        return
-
-    df = pd.DataFrame({
-        'date': all_dates,
-        'temperature': all_tas,
-        'precipitation': all_pr,
-    })
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.sort_values('date').reset_index(drop=True)
-
-    df.to_csv(out_file, index=False)
-    print(f'    Saved {len(df)} days to {out_file.name}')
 
 
 def main():
@@ -207,33 +152,37 @@ def main():
     parser.add_argument('--scenarios', nargs='+', default=DEFAULT_SCENARIOS)
     parser.add_argument('--year-start', type=int, default=2025)
     parser.add_argument('--year-end', type=int, default=2100)
-    parser.add_argument('--include-historical', action='store_true',
-                        help='Also download 1990-2014 historical for bias correction')
+    parser.add_argument('--parallel', type=int, default=4,
+                        help='Batch size for parallel downloads (default: 4)')
     args = parser.parse_args()
 
     CMIP6_DIR.mkdir(parents=True, exist_ok=True)
 
+    n_combos = len(args.gcms) * len(args.scenarios)
+    n_years = args.year_end - args.year_start + 1
+
     print('=' * 60)
     print('NEX-GDDP-CMIP6 Download for Dixon Glacier')
-    print(f'  GCMs: {args.gcms}')
-    print(f'  SSPs: {args.scenarios}')
-    print(f'  Period: {args.year_start}-{args.year_end}')
-    n_files = len(args.gcms) * len(args.scenarios) * (args.year_end - args.year_start + 1) * 2
-    est_gb = n_files * 0.235 / 1000
-    print(f'  Files to process: {n_files} (~{est_gb:.0f} GB download, extracted to ~KB)')
+    print(f'GCMs: {args.gcms}')
+    print(f'SSPs: {args.scenarios}')
+    print(f'Period: {args.year_start}-{args.year_end} ({n_years} years)')
+    print(f'Combos: {n_combos}, batch size: {args.parallel}')
     print('=' * 60)
 
     for gcm in args.gcms:
         print(f'\n--- {gcm} ---')
-
-        if args.include_historical:
-            download_historical(gcm)
-
         for scenario in args.scenarios:
-            download_gcm_scenario(gcm, scenario, args.year_start, args.year_end)
+            download_gcm_scenario(
+                gcm, scenario, args.year_start, args.year_end,
+                n_parallel=args.parallel,
+            )
 
-    print('\nDone!')
-    print(f'Output files in: {CMIP6_DIR}')
+    # Summary
+    csvs = list(CMIP6_DIR.glob('dixon_*.csv'))
+    print(f'\nDone! {len(csvs)} files in {CMIP6_DIR}')
+    for f in sorted(csvs):
+        n = sum(1 for _ in open(f)) - 1
+        print(f'  {f.name}: {n} days ({n/365:.0f} yrs)')
 
 
 if __name__ == '__main__':
