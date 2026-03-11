@@ -13,6 +13,11 @@ __pycache__/
 # Calibration logs (large, regenerable)
 calibration_output/calibration_log*.csv
 
+# CMIP6 temp files and auth tokens
+data/cmip6/tmp/
+data/cmip6/gdrive_token.json
+*.nc
+
 # OS
 .DS_Store
 Thumbs.db
