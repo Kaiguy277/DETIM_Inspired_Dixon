@@ -870,3 +870,58 @@ forcing error). Both acknowledged as known limitations.
 - `calibration_output/corner_plot_v10.png`
 - `calibration_output/calibration_summary_v10.json`
 - `calibration_output/calibration_v10_stdout.log`
+
+---
+
+## PROJ-001: First Full Projection Run (SSP2-4.5 + SSP5-8.5)
+
+**Date:** 2026-03-10
+**Script:** `run_projection.py`
+**Parameters:** `calibration_output/best_params_v10.json` (CAL-010 MAP)
+**Grid:** 100m
+**Ice thickness:** Farinotti et al. (2019) consensus, 171m mean
+
+### Configuration
+- **GCMs (5):** ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR, MRI-ESM2-0, NorESM2-MM
+- **Scenarios:** SSP2-4.5, SSP5-8.5
+- **Period:** WY2026–WY2100 (75 years)
+- **Geometry:** Delta-h (Huss et al. 2010), large class, Farinotti bedrock
+- **Routing:** 3 parallel linear reservoirs (k_fast=0.3, k_slow=0.05, k_gw=0.01)
+- **Bias correction:** Monthly delta method vs Nuka SNOTEL 1991–2020
+
+### Results — SSP2-4.5
+| GCM | Final area (km2) | Final vol (km3) | Area % | Vol % | Cum MB (m w.e.) |
+|-----|-------------------|-----------------|--------|-------|-----------------|
+| ACCESS-CM2 | 17.8 | 1.798 | 44% | 26% | -157.5 |
+| EC-Earth3 | 17.6 | 1.758 | 44% | 26% | -160.3 |
+| MPI-ESM1-2-HR | 15.2 | 1.293 | 38% | 19% | -187.5 |
+| MRI-ESM2-0 | 22.1 | 2.531 | 55% | 37% | -123.5 |
+| NorESM2-MM | 16.8 | 1.612 | 42% | 23% | -167.7 |
+| **Ensemble** | **~18** | **~1.8** | **45%** | **26%** | **~-159** |
+
+**Peak water:** ~WY2043 (8.13 m3/s, 11-yr smoothed, range 7.06–8.33)
+
+### Results — SSP5-8.5
+| GCM | Final area (km2) | Final vol (km3) | Area % | Vol % | Cum MB (m w.e.) |
+|-----|-------------------|-----------------|--------|-------|-----------------|
+| ACCESS-CM2 | 6.3 | 0.250 | 16% | 4% | -277.2 |
+| EC-Earth3 | 6.4 | 0.255 | 16% | 4% | -276.9 |
+| MPI-ESM1-2-HR | 12.2 | 0.780 | 30% | 11% | -225.6 |
+| MRI-ESM2-0 | 19.5 | 2.124 | 49% | 31% | -143.4 |
+| NorESM2-MM | 7.8 | 0.338 | 19% | 5% | -263.2 |
+| **Ensemble** | **~10** | **~0.75** | **26%** | **11%** | **~-237** |
+
+**Peak water:** ~WY2058 (8.44 m3/s, 11-yr smoothed, range 7.46–9.50)
+
+### Assessment
+- Glacier survives to 2100 in all scenarios but loses 45–74% of area
+- Peak water ~15 years later under SSP5-8.5 (more ice to melt)
+- MRI-ESM2-0 consistently wettest/coolest outlier
+- Large GCM spread in SSP5-8.5 reflects structural model uncertainty
+- Routing not yet validated against observed discharge
+- Single parameter set (MAP); posterior ensemble projections pending
+
+### Output files
+- `projection_output/projection_ssp{245,585}_*_2100.csv` (5 GCMs + ensemble each)
+- `projection_output/peak_water_ssp{245,585}.json`
+- `projection_output/*.png` (diagnostic plots)
