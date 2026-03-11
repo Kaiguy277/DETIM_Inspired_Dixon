@@ -657,15 +657,13 @@ calibration, providing a true out-of-sample spatial check.
   - Balance at observed snowline: mean m w.e. at obs positions (ideal = 0)
   - Spatial overlap: fraction of observed snowline in modeled snow vs ice zones
 
-**Results (MAP parameters, 21 valid years):**
+**Results (MAP parameters, 21 valid years → 19 after D-022 exclusions):**
   - Mean bias: +6 m (near zero — model not systematically biased)
   - RMSE: 189 m
   - MAE: 122 m
   - Correlation: r = 0.52
   - Mean balance at observed snowline: −0.38 m w.e.
-  - Outliers: 2000 and 2005 have very large negative bias (−410m, −628m);
-    likely related to early observation dates (Aug 9, Sep 8) capturing
-    mid-summer rather than end-of-summer snowlines
+  - WY2000 and WY2005 excluded per D-022 (insufficient SNOTEL data)
   - Post-2017 persistent positive bias (~100–175m) suggests model melts
     slightly too aggressively in recent years
 
@@ -680,3 +678,47 @@ calibration, providing a true out-of-sample spatial check.
 **References:**
   - Rabatel, A. et al. (2005). J. Glaciol., 51(172), 539-546.
   - Hock, R. (1999). J. Glaciol., 45(149), 101-111.
+
+## D-022: Exclude Snowline Years with Insufficient SNOTEL Data
+
+**Date:** 2026-03-11
+**Decision:** Automatically exclude snowline validation years where >30% of
+melt-season (May–Sep) temperature data is missing from Nuka SNOTEL.
+
+**Rationale:** WY2000 and WY2005 showed extreme negative snowline bias
+(−600m and −660m) with the model placing the snowline at the glacier
+terminus (~430m). Investigation revealed the root cause is massive NaN
+gaps in Nuka SNOTEL temperature during the melt season:
+  - WY2000: 56 of 153 days missing (37%), including a 53-day streak
+    from June 19 to August 10
+  - WY2005: 132 of 153 days missing (86%), with two streaks spanning
+    nearly all of May through August
+
+The validation code (D-021) replaced NaN temperatures with 0°C before
+running the model. This effectively eliminated melt on those days,
+producing unrealistically high SWE and snowlines at the glacier terminus.
+Including these years inflated RMSE and degraded the correlation.
+
+**Threshold:** 30% of May–Sep temperatures missing. This catches WY2000
+(37%) and WY2005 (86%) while retaining years like WY2003 (21%, gap in
+late September after melt season) that validate well despite some missing
+data.
+
+**Implementation:** Added a NaN fraction check in
+`snowline_validation.py:validate_snowline_year()`. Years exceeding the
+threshold return `'bad_climate'` and are logged as skipped.
+
+**Effect on validation statistics (expected):**
+  - n: 21 → 19 years
+  - RMSE, MAE should decrease substantially
+  - Correlation should improve (2000 and 2005 were major outliers)
+
+**Alternatives considered:**
+  - Climatological gap-filling (daily DOY means): More data-preserving
+    but introduces synthetic forcing. Could be revisited for thesis
+    sensitivity analysis.
+  - Hardcoded exclusion list: Less principled; the threshold approach
+    is automatic and self-documenting.
+
+**Files modified:**
+  - `dixon_melt/snowline_validation.py` — added melt-season NaN check

@@ -195,6 +195,15 @@ def validate_snowline_year(fmodel, climate, grid, params, obs_snowline,
     if len(wy) < 200:
         return None
 
+    # Check melt-season data quality (May-Sep).  NaN temperatures get
+    # replaced with 0 below, which suppresses melt and corrupts results.
+    # Years with >30% missing melt-season T are unreliable (see D-022).
+    melt_season = wy.loc[f'{year}-05-01':f'{year}-09-30']
+    if len(melt_season) > 0:
+        nan_frac = melt_season['temperature'].isna().mean()
+        if nan_frac > 0.30:
+            return 'bad_climate'
+
     T = wy['temperature'].values.astype(np.float64)
     P = wy['precipitation'].values.astype(np.float64)
     doy = np.array(wy.index.dayofyear, dtype=np.int64)
@@ -270,6 +279,9 @@ def run_all_validation(fmodel, climate, grid, params, snowline_dir,
                                    winter_swe_mm)
         if r is None:
             print(f"    {yr}: skipped (insufficient climate data)")
+            continue
+        if r == 'bad_climate':
+            print(f"    {yr}: skipped (>30% melt-season temperature missing)")
             continue
 
         bias = r['elev_bias']
