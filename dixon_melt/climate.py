@@ -2,7 +2,7 @@
 Climate data ingestion, cleaning, and merging for Dixon Glacier.
 
 Sources:
-  - Nuka Glacier SNOTEL (site 1037, 1230m elev) — daily T, precip since 1990
+  - Nuka Glacier SNOTEL (site 1037, 375m / 1230 ft elev) — daily T, precip since 1990
   - Dixon on-glacier AWS — hourly T, precip during summer field seasons
 """
 import numpy as np
@@ -12,7 +12,7 @@ from pathlib import Path
 
 # ── Nuka SNOTEL ─────────────────────────────────────────────────────
 
-NUKA_ELEV = 1230.0  # m
+NUKA_ELEV = 375.0  # m (1230 ft; D-013: NRCS reports in feet, not meters)
 
 
 def load_nuka_snotel(csv_path):
@@ -152,7 +152,7 @@ def merge_climate_data(nuka_df, dixon_daily_df=None, lapse_rate=-0.0065):
     DataFrame with columns: temperature, precipitation (at Dixon AWS elevation)
     """
     # Adjust Nuka temps to Dixon AWS elevation
-    dz = DIXON_AWS_ELEV - NUKA_ELEV  # negative (Dixon lower)
+    dz = DIXON_AWS_ELEV - NUKA_ELEV  # positive (Dixon 804m is above Nuka 375m)
     nuka_adj = nuka_df.copy()
     nuka_adj['tavg_c'] = nuka_adj['tavg_c'] + lapse_rate * dz
 

@@ -3,19 +3,25 @@ Future projection runner for Dixon Glacier.
 
 Runs DETIM forward under CMIP6 emission scenarios (NEX-GDDP-CMIP6) with
 evolving glacier geometry (delta-h, Huss et al. 2010) and discharge routing
-(parallel linear reservoirs). Multi-GCM ensemble for uncertainty.
+(parallel linear reservoirs). Propagates both climate (multi-GCM) and
+parameter (MCMC posterior) uncertainty through the full projection.
 
 Tracks: mass balance, area, volume, mean thickness, discharge (m3/s),
 and identifies "peak water" timing per scenario.
 
 Usage:
+    # Top 250 param sets from MCMC chain (default, cf. Geck 2020)
     python run_projection.py --scenario ssp245
-                             [--params calibration_output/best_params_v10.json]
-                             [--end-year 2100]
-                             [--gcms ACCESS-CM2 MRI-ESM2-0]
+
+    # Single parameter set (legacy)
+    python run_projection.py --scenario ssp245 --params best_params_v10.json
+
+    # Subset of GCMs
+    python run_projection.py --scenario ssp245 --gcms ACCESS-CM2 MRI-ESM2-0
 
 Requires:
-    1. Calibrated parameters (from CAL-010 or similar)
+    1. Posterior ensemble (calibration_output/posterior_params_v10.npy) or
+       single parameter JSON (calibration_output/best_params_v10.json)
     2. CMIP6 climate CSVs in data/cmip6/ (from download_cmip6.py)
     3. Farinotti ice thickness in data/ice_thickness/
 
@@ -27,6 +33,7 @@ References:
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from datetime import datetime
 import json
 import time
 
@@ -36,21 +43,169 @@ GLACIER_PATH = PROJECT / 'geodedic_mb' / 'dixon_glacier_outline_rgi7.geojson'
 NUKA_PATH = PROJECT / 'data' / 'climate' / 'nuka_snotel_full.csv'
 CMIP6_DIR = PROJECT / 'data' / 'cmip6'
 FARINOTTI_PATH = PROJECT / 'data' / 'ice_thickness' / 'RGI60-01.18059_thickness.tif'
-OUTPUT_DIR = PROJECT / 'projection_output'
+OUTPUT_BASE = PROJECT / 'projection_output'
+
+
+CHAIN_PATH = PROJECT / 'calibration_output' / 'mcmc_chain_v10.npy'
+LOGPROB_PATH = PROJECT / 'calibration_output' / 'mcmc_logprob_v10.npy'
+POSTERIOR_NAMES_PATH = PROJECT / 'calibration_output' / 'posterior_param_names_v10.json'
+
+# Fixed parameters not in the posterior (held constant during calibration)
+FIXED_PARAMS = {
+    'internal_lapse': -0.005,
+    'k_wind': 0.0,
+}
+
+# Number of top-performing parameter sets to use (cf. Geck 2020, Eklutna)
+N_TOP = 250
+
+# Burn-in: discard first half of chain (conservative)
+BURNIN_FRACTION = 0.5
+
+# Ensemble output percentiles
+PERCENTILES = [5, 25, 50, 75, 95]
+
+# Auto-incrementing run counter file
+_RUN_COUNTER_FILE = OUTPUT_BASE / '.run_counter'
+
+# Result keys to aggregate across ensemble members
+RESULT_KEYS = [
+    'glacier_wide_balance', 'area_km2', 'volume_km3', 'mean_thickness_m',
+    'total_annual_runoff_mm', 'peak_daily_discharge_m3s',
+    'mean_annual_discharge_m3s', 'total_annual_discharge_m3',
+]
+
+
+def create_run_dir(n_params, scenarios, label=None):
+    """Create a numbered, descriptively-named run directory.
+
+    Format: PROJ-{NNN}_{label}_{date}/
+    Example: PROJ-003_top250_ssp245-ssp585_2026-03-11/
+
+    Returns Path to the created directory.
+    """
+    OUTPUT_BASE.mkdir(exist_ok=True)
+
+    # Auto-increment run number
+    if _RUN_COUNTER_FILE.exists():
+        counter = int(_RUN_COUNTER_FILE.read_text().strip()) + 1
+    else:
+        # Scan existing PROJ-### folders to find max
+        existing = [d.name for d in OUTPUT_BASE.iterdir()
+                    if d.is_dir() and d.name.startswith('PROJ-')]
+        if existing:
+            nums = []
+            for name in existing:
+                try:
+                    nums.append(int(name.split('_')[0].split('-')[1]))
+                except (IndexError, ValueError):
+                    pass
+            counter = max(nums) + 1 if nums else 1
+        else:
+            counter = 1
+    _RUN_COUNTER_FILE.write_text(str(counter))
+
+    date_str = datetime.now().strftime('%Y-%m-%d')
+    ssp_str = '-'.join(s.replace('ssp', '') for s in scenarios)
+    param_str = f'top{n_params}' if n_params > 1 else 'single-param'
+    if label:
+        name = f'PROJ-{counter:03d}_{label}_{date_str}'
+    else:
+        name = f'PROJ-{counter:03d}_{param_str}_ssp{ssp_str}_{date_str}'
+
+    run_dir = OUTPUT_BASE / name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
 
 def load_params(path):
+    """Load a single parameter set from JSON."""
     with open(path) as f:
         params = json.load(f)
-    # Map param names: calibration saves 'lapse_rate', FastDETIM expects 'internal_lapse'
     if 'lapse_rate' in params and 'internal_lapse' not in params:
         params['internal_lapse'] = params['lapse_rate']
     return params
 
 
+def load_top_param_sets(n_top=N_TOP, chain_path=None, logprob_path=None,
+                        names_path=None):
+    """Select the top-performing parameter sets from the MCMC chain.
+
+    Ranks all post-burn-in samples by log-probability and returns the
+    n_top best-performing unique parameter sets. Follows the approach
+    of Geck (2020) on Eklutna Glacier.
+
+    Parameters
+    ----------
+    n_top : int
+        Number of top-performing sets to keep (default 250).
+    chain_path : path to MCMC chain .npy (n_steps × n_walkers × n_params)
+    logprob_path : path to log-probability .npy (n_steps × n_walkers)
+    names_path : path to JSON with parameter names list
+
+    Returns
+    -------
+    list of dicts, each a complete param set for FastDETIM.run(),
+    ordered best-to-worst by log-probability.
+    """
+    chain_path = Path(chain_path or CHAIN_PATH)
+    logprob_path = Path(logprob_path or LOGPROB_PATH)
+    names_path = Path(names_path or POSTERIOR_NAMES_PATH)
+
+    chain = np.load(chain_path)       # (n_steps, n_walkers, n_params)
+    logprob = np.load(logprob_path)   # (n_steps, n_walkers)
+    with open(names_path) as f:
+        names = json.load(f)
+
+    n_steps = chain.shape[0]
+    burnin = int(n_steps * BURNIN_FRACTION)
+
+    # Flatten post-burn-in chain
+    flat_chain = chain[burnin:].reshape(-1, chain.shape[2])
+    flat_logprob = logprob[burnin:].flatten()
+    n_available = flat_chain.shape[0]
+
+    # Rank by log-probability (highest = best fit)
+    ranked_idx = np.argsort(flat_logprob)[::-1]
+
+    # Take top n_top, removing exact duplicates
+    seen = set()
+    selected = []
+    for idx in ranked_idx:
+        key = tuple(flat_chain[idx])
+        if key not in seen:
+            seen.add(key)
+            selected.append(idx)
+        if len(selected) >= n_top:
+            break
+
+    samples = flat_chain[selected]
+    lp = flat_logprob[selected]
+
+    print(f"  Selected top {len(selected)} of {n_available} post-burn-in samples")
+    print(f"  Log-prob range: {lp[-1]:.2f} to {lp[0]:.2f} "
+          f"(best – worst in selection)")
+
+    param_list = []
+    for row in samples:
+        p = {name: float(val) for name, val in zip(names, row)}
+        p['r_ice'] = 2.0 * p['r_snow']
+        p.update(FIXED_PARAMS)
+        param_list.append(p)
+
+    return param_list
+
+
 def run_single_gcm(fmodel, gcm_climate, ice_thickness_init, bedrock, grid,
-                   params, routing_params, wy_start, wy_end, gcm_name=''):
+                   params, routing_params, wy_start, wy_end, gcm_name='',
+                   save_snapshots=False):
     """Run projection for a single GCM forcing.
+
+    Parameters
+    ----------
+    save_snapshots : bool
+        If True, store yearly spatial snapshots of glacier_mask and
+        ice_thickness in results['snapshots']. Used for animations.
 
     Returns dict of annual results.
     """
@@ -71,6 +226,9 @@ def run_single_gcm(fmodel, gcm_climate, ice_thickness_init, bedrock, grid,
         'elev_min': [], 'elev_max': [], 'size_class': [],
     }
 
+    if save_snapshots:
+        results['snapshots'] = []
+
     cum_balance = 0.0
 
     for wy_year in range(wy_start, wy_end + 1):
@@ -83,6 +241,14 @@ def run_single_gcm(fmodel, gcm_climate, ice_thickness_init, bedrock, grid,
         glacier_elevs = current_elev[current_mask]
         glacier_thick = ice_thickness[current_mask]
         vol_km3 = glacier_thick.sum() * cell_size**2 / 1e9
+
+        if save_snapshots:
+            results['snapshots'].append({
+                'year': wy_year,
+                'mask': current_mask.copy(),
+                'thickness': ice_thickness.copy(),
+                'elevation': current_elev.copy(),
+            })
 
         # Extract water year climate
         from dixon_melt.climate_projections import extract_water_year
@@ -190,11 +356,68 @@ def peak_water_analysis(results_list, scenario_name):
     }
 
 
-def run_projection(params_path, scenario='ssp245', end_year=2100,
-                   grid_res=100.0, gcms=None):
+def aggregate_ensemble(all_runs, years):
+    """Aggregate results across all ensemble members (GCM × param samples).
+
+    Parameters
+    ----------
+    all_runs : list of result dicts from run_single_gcm
+    years : sorted list of water years
+
+    Returns
+    -------
+    DataFrame with columns: year, {key}_mean, {key}_std, {key}_p05..p95
+    """
+    ens_df = pd.DataFrame({'year': years})
+    n_years = len(years)
+
+    for key in RESULT_KEYS:
+        # Build matrix (n_members × n_years), aligning on year
+        vals = []
+        for r in all_runs:
+            yr_to_val = dict(zip(r['year'], r[key]))
+            vals.append([yr_to_val.get(y, np.nan) for y in years])
+        arr = np.array(vals)
+
+        ens_df[f'{key}_mean'] = np.nanmean(arr, axis=0)
+        ens_df[f'{key}_std'] = np.nanstd(arr, axis=0)
+        for pct in PERCENTILES:
+            ens_df[f'{key}_p{pct:02d}'] = np.nanpercentile(arr, pct, axis=0)
+
+    return ens_df
+
+
+def run_projection(params_path=None, scenario='ssp245', end_year=2100,
+                   grid_res=100.0, gcms=None, n_samples=None,
+                   output_dir=None):
     """Run full ensemble projection for one SSP scenario.
 
-    Returns dict with ensemble results.
+    Propagates both climate uncertainty (multi-GCM) and parameter uncertainty
+    (MCMC posterior samples). Each (GCM, param_sample) pair runs an independent
+    simulation with its own geometry evolution trajectory.
+
+    Parameters
+    ----------
+    params_path : str or None
+        Path to single-param JSON (legacy mode). If None, uses posterior
+        ensemble from calibration_output/.
+    scenario : str
+        SSP scenario identifier (ssp126, ssp245, ssp585).
+    end_year : int
+        Final water year of projection.
+    grid_res : float
+        Model grid resolution in meters.
+    gcms : list of str or None
+        GCM names to include; None = all 5.
+    n_samples : int or None
+        Number of top-performing param sets to use. None = 250
+        (following Geck 2020). Ignored when params_path is a JSON.
+    output_dir : Path or None
+        Directory for output files. If None, auto-creates a PROJ-### folder.
+
+    Returns
+    -------
+    dict with scenario, ensemble results, peak water analysis.
     """
     t_start = time.time()
 
@@ -207,14 +430,32 @@ def run_projection(params_path, scenario='ssp245', end_year=2100,
 
     scenario_label = SCENARIOS.get(scenario, scenario)
 
+    # ── Load parameters ───────────────────────────────────────────────
+    if params_path is not None and params_path.endswith('.json'):
+        param_sets = [load_params(params_path)]
+        param_source = f"single: {params_path}"
+    else:
+        param_sets = load_top_param_sets(n_top=n_samples or N_TOP)
+        param_source = f"top {len(param_sets)} from MCMC chain"
+
+    n_params = len(param_sets)
+
+    # ── Create output directory ────────────────────────────────────────
+    if output_dir is None:
+        output_dir = create_run_dir(n_params, [scenario])
+    else:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
     print("=" * 70)
     print(f"DIXON GLACIER PROJECTION — {scenario_label}")
     print(f"Period: WY2026 to WY{end_year}")
-    print(f"GCMs: {gcms}")
+    print(f"GCMs ({len(gcms)}): {gcms}")
+    print(f"Parameter sets: {param_source}")
+    print(f"Total runs: {len(gcms)} GCMs × {n_params} param sets"
+          f" = {len(gcms) * n_params}")
+    print(f"Output: {output_dir.name}/")
     print("=" * 70)
-
-    params = load_params(params_path)
-    print(f"\n  Parameters from: {params_path}")
 
     # ── Prepare grid & model ──────────────────────────────────────────
     from dixon_melt.terrain import prepare_grid
@@ -227,7 +468,7 @@ def run_projection(params_path, scenario='ssp245', end_year=2100,
     from dixon_melt.fast_model import FastDETIM
     from dixon_melt import config
     from dixon_melt.glacier_dynamics import (
-        initialize_ice_thickness, compute_bedrock, va_check,
+        initialize_ice_thickness, compute_bedrock,
     )
 
     fmodel = FastDETIM(
@@ -268,105 +509,166 @@ def run_projection(params_path, scenario='ssp245', end_year=2100,
     # ── Routing parameters ────────────────────────────────────────────
     routing_params = config.DEFAULT_ROUTING
 
-    # ── Run each GCM ──────────────────────────────────────────────────
-    all_results = {}
+    # ── Run all (GCM × param) combinations ────────────────────────────
+    all_runs = []          # flat list of every run result
+    gcm_results = {}       # keyed by gcm_name → list of runs (one per param)
+    run_count = 0
+    total_runs = len(ensemble) * n_params
+
     for gcm_name, gcm_climate in ensemble.items():
-        print(f"\n  --- {gcm_name} ---")
+        gcm_runs = []
+        print(f"\n  --- {gcm_name} ({n_params} param sets) ---")
         t_gcm = time.time()
 
-        r = run_single_gcm(
-            fmodel, gcm_climate, ice_thickness, bedrock, grid,
-            params, routing_params, 2026, end_year, gcm_name,
-        )
+        for pi, params in enumerate(param_sets):
+            run_count += 1
+            r = run_single_gcm(
+                fmodel, gcm_climate, ice_thickness, bedrock, grid,
+                params, routing_params, 2026, end_year, gcm_name,
+            )
+            gcm_runs.append(r)
+            all_runs.append(r)
 
-        n_years = len(r['year'])
-        if n_years > 0:
-            final_area = r['area_km2'][-1]
-            final_vol = r['volume_km3'][-1]
-            print(f"    {n_years} years, final: {final_area:.1f} km2, "
-                  f"{final_vol:.3f} km3 "
-                  f"({100 * final_area / area_init:.0f}% area, "
-                  f"{100 * final_vol / max(vol_init, 1e-9):.0f}% vol), "
-                  f"{time.time() - t_gcm:.0f}s")
-        all_results[gcm_name] = r
+            if n_params <= 5 or (pi + 1) % max(1, n_params // 5) == 0:
+                n_yr = len(r['year'])
+                area_end = r['area_km2'][-1] if n_yr > 0 else 0
+                print(f"    [{run_count}/{total_runs}] param {pi+1}/{n_params}"
+                      f"  final area={area_end:.1f} km2")
 
-    # ── Ensemble summary ──────────────────────────────────────────────
+        dt_gcm = time.time() - t_gcm
+        print(f"    {gcm_name} done: {dt_gcm:.0f}s "
+              f"({dt_gcm / max(n_params, 1):.1f}s/run)")
+        gcm_results[gcm_name] = gcm_runs
+
+    # ── Ensemble aggregation ──────────────────────────────────────────
     elapsed = time.time() - t_start
     print(f"\n{'=' * 70}")
     print(f"ENSEMBLE SUMMARY — {scenario_label} ({elapsed:.0f}s)")
+    print(f"  {total_runs} total runs "
+          f"({len(ensemble)} GCMs × {n_params} param sets)")
     print(f"{'=' * 70}")
 
-    # Peak water
-    results_list = list(all_results.values())
-    pw = peak_water_analysis(results_list, scenario)
+    # Determine common year range
+    all_years = set()
+    for r in all_runs:
+        all_years.update(r['year'])
+    years = sorted(all_years)
+
+    # Full ensemble aggregation (GCM × param)
+    ens_df = aggregate_ensemble(all_runs, years)
+
+    # Per-GCM median (aggregated over param samples)
+    gcm_medians = {}
+    for gcm_name, runs in gcm_results.items():
+        gcm_df = aggregate_ensemble(runs, years)
+        gcm_medians[gcm_name] = gcm_df
+
+    # Peak water (using all runs for full uncertainty)
+    pw = peak_water_analysis(all_runs, scenario)
     if pw:
         print(f"\n  PEAK WATER: ~WY{pw['peak_year']} "
               f"({pw['peak_discharge_m3s']:.2f} m3/s, "
               f"{pw['window_years']}-yr smoothed)")
-        print(f"    GCM range: {pw['gcm_min']:.2f}–{pw['gcm_max']:.2f} m3/s")
+        print(f"    Range: {pw['gcm_min']:.2f}–{pw['gcm_max']:.2f} m3/s")
 
     # End-of-century summary
-    print(f"\n  End-of-century ({end_year}):")
-    for gcm_name, r in all_results.items():
-        if len(r['year']) > 0:
-            print(f"    {gcm_name}: area={r['area_km2'][-1]:.1f} km2, "
-                  f"vol={r['volume_km3'][-1]:.3f} km3, "
-                  f"cum_MB={r['cum_balance'][-1]:+.1f} m w.e.")
+    if years:
+        last_yr = years[-1]
+        last_idx = years.index(last_yr)
+        print(f"\n  End-of-century (WY{last_yr}):")
+        print(f"    Area:   {ens_df.loc[last_idx, 'area_km2_p50']:.1f} km2 "
+              f"[{ens_df.loc[last_idx, 'area_km2_p05']:.1f}–"
+              f"{ens_df.loc[last_idx, 'area_km2_p95']:.1f}]"
+              f"  ({100 * ens_df.loc[last_idx, 'area_km2_p50'] / area_init:.0f}%)")
+        print(f"    Volume: {ens_df.loc[last_idx, 'volume_km3_p50']:.4f} km3 "
+              f"[{ens_df.loc[last_idx, 'volume_km3_p05']:.4f}–"
+              f"{ens_df.loc[last_idx, 'volume_km3_p95']:.4f}]"
+              f"  ({100 * ens_df.loc[last_idx, 'volume_km3_p50'] / max(vol_init, 1e-9):.0f}%)")
+        print(f"    Bal:    {ens_df.loc[last_idx, 'glacier_wide_balance_p50']:+.2f}"
+              f" m w.e./yr "
+              f"[{ens_df.loc[last_idx, 'glacier_wide_balance_p05']:+.2f} to "
+              f"{ens_df.loc[last_idx, 'glacier_wide_balance_p95']:+.2f}]")
+
+        # Per-GCM breakdown
+        print(f"\n  Per-GCM median end-of-century area:")
+        for gcm_name, gcm_df in gcm_medians.items():
+            a = gcm_df.loc[last_idx, 'area_km2_p50']
+            print(f"    {gcm_name:20s}: {a:.1f} km2 "
+                  f"({100 * a / area_init:.0f}%)")
 
     # ── Save results ──────────────────────────────────────────────────
-    OUTPUT_DIR.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True)
 
-    for gcm_name, r in all_results.items():
-        df = pd.DataFrame(r)
-        outfile = OUTPUT_DIR / f'projection_{scenario}_{gcm_name}_{end_year}.csv'
-        df.to_csv(outfile, index=False)
+    # Full ensemble percentiles
+    ens_file = output_dir / f'projection_{scenario}_ensemble_{end_year}.csv'
+    ens_df.to_csv(ens_file, index=False)
+    print(f"\n  Ensemble summary: {ens_file.name}")
 
-    # Save ensemble mean
-    if len(results_list) > 0:
-        years = results_list[0]['year']
-        ens_df = pd.DataFrame({'year': years})
+    # Per-GCM aggregated results
+    for gcm_name, gcm_df in gcm_medians.items():
+        gcm_file = output_dir / f'projection_{scenario}_{gcm_name}_{end_year}.csv'
+        gcm_df.to_csv(gcm_file, index=False)
 
-        for key in ['glacier_wide_balance', 'area_km2', 'volume_km3',
-                    'mean_thickness_m', 'total_annual_runoff_mm',
-                    'mean_annual_discharge_m3s', 'peak_daily_discharge_m3s']:
-            vals = []
-            for r in results_list:
-                yr_to_val = dict(zip(r['year'], r[key]))
-                vals.append([yr_to_val.get(y, np.nan) for y in years])
-            arr = np.array(vals)
-            ens_df[f'{key}_mean'] = np.nanmean(arr, axis=0)
-            ens_df[f'{key}_std'] = np.nanstd(arr, axis=0)
-            ens_df[f'{key}_min'] = np.nanmin(arr, axis=0)
-            ens_df[f'{key}_max'] = np.nanmax(arr, axis=0)
-
-        ens_file = OUTPUT_DIR / f'projection_{scenario}_ensemble_{end_year}.csv'
-        ens_df.to_csv(ens_file, index=False)
-        print(f"\n  Ensemble summary: {ens_file.name}")
-
+    # Peak water
     if pw:
-        pw_file = OUTPUT_DIR / f'peak_water_{scenario}.json'
+        pw['n_param_samples'] = n_params
+        pw['n_gcms'] = len(ensemble)
+        pw['n_total_runs'] = total_runs
+        pw_file = output_dir / f'peak_water_{scenario}.json'
         with open(pw_file, 'w') as f:
             json.dump(pw, f, indent=2)
 
-    print(f"  All results saved to {OUTPUT_DIR}/")
+    # Save ensemble metadata
+    meta = {
+        'scenario': scenario,
+        'end_year': end_year,
+        'grid_res_m': grid_res,
+        'n_param_samples': n_params,
+        'gcms': list(ensemble.keys()),
+        'n_total_runs': total_runs,
+        'initial_area_km2': area_init,
+        'initial_volume_km3': vol_init,
+        'thickness_source': thickness_source,
+        'elapsed_seconds': elapsed,
+        'percentiles': PERCENTILES,
+    }
+    meta_file = output_dir / f'projection_{scenario}_meta_{end_year}.json'
+    with open(meta_file, 'w') as f:
+        json.dump(meta, f, indent=2)
+
+    print(f"  All results saved to {output_dir}/")
 
     return {
         'scenario': scenario,
-        'gcm_results': all_results,
+        'ensemble_df': ens_df,
+        'gcm_medians': gcm_medians,
         'peak_water': pw,
         'initial_area_km2': area_init,
         'initial_volume_km3': vol_init,
+        'output_dir': output_dir,
     }
 
 
-def run_all_scenarios(params_path, end_year=2100, grid_res=100.0, gcms=None):
+def run_all_scenarios(params_path=None, end_year=2100, grid_res=100.0,
+                      gcms=None, n_samples=None, label=None):
     """Run projections for all three SSP scenarios."""
     from dixon_melt.climate_projections import SCENARIOS
+
+    # Determine n_params for folder naming
+    if params_path is not None and params_path.endswith('.json'):
+        n_p = 1
+    else:
+        n_p = n_samples or N_TOP
+
+    # One shared folder for all scenarios in this run
+    run_dir = create_run_dir(n_p, list(SCENARIOS.keys()), label=label)
+    print(f"\n  Run directory: {run_dir.name}/\n")
 
     all_projections = {}
     for scenario in SCENARIOS:
         result = run_projection(
-            params_path, scenario, end_year, grid_res, gcms)
+            params_path, scenario, end_year, grid_res, gcms, n_samples,
+            output_dir=run_dir)
         if result is not None:
             all_projections[scenario] = result
 
@@ -378,12 +680,14 @@ def run_all_scenarios(params_path, end_year=2100, grid_res=100.0, gcms=None):
         for sc, res in all_projections.items():
             pw = res.get('peak_water')
             pw_str = f"WY{pw['peak_year']}" if pw else "N/A"
-            gcm_areas = [r['area_km2'][-1] for r in res['gcm_results'].values()
-                         if len(r['area_km2']) > 0]
-            mean_area = np.mean(gcm_areas) if gcm_areas else 0
+            ens = res['ensemble_df']
+            last = len(ens) - 1
+            area_med = ens.loc[last, 'area_km2_p50']
             print(f"  {sc}: peak water {pw_str}, "
-                  f"final area {mean_area:.1f} km2 "
-                  f"({100 * mean_area / res['initial_area_km2']:.0f}%)")
+                  f"final area {area_med:.1f} km2 "
+                  f"[{ens.loc[last, 'area_km2_p05']:.1f}–"
+                  f"{ens.loc[last, 'area_km2_p95']:.1f}] "
+                  f"({100 * area_med / res['initial_area_km2']:.0f}%)")
 
     return all_projections
 
@@ -396,15 +700,22 @@ if __name__ == '__main__':
                         choices=['ssp126', 'ssp245', 'ssp585', 'all'],
                         help='SSP scenario (default: all)')
     parser.add_argument('--end-year', type=int, default=2100)
-    parser.add_argument('--params',
-                        default='calibration_output/best_params_v10.json')
+    parser.add_argument('--params', default=None,
+                        help='Path to single-param JSON (legacy) or posterior '
+                             '.npy. Default: use posterior ensemble.')
+    parser.add_argument('--n-samples', type=int, default=None,
+                        help='Number of top-performing param sets '
+                             '(default: 250, cf. Geck 2020)')
     parser.add_argument('--gcms', nargs='+', default=None,
                         help='GCMs to use (default: 5-model ensemble)')
     parser.add_argument('--grid-res', type=float, default=100.0)
+    parser.add_argument('--label', default=None,
+                        help='Custom label for the run folder name')
     args = parser.parse_args()
 
     if args.scenario is None or args.scenario == 'all':
-        run_all_scenarios(args.params, args.end_year, args.grid_res, args.gcms)
+        run_all_scenarios(args.params, args.end_year, args.grid_res,
+                          args.gcms, args.n_samples, args.label)
     else:
         run_projection(args.params, args.scenario, args.end_year,
-                       args.grid_res, args.gcms)
+                       args.grid_res, args.gcms, args.n_samples)

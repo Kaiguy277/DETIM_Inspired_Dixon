@@ -5,7 +5,7 @@ Changes from v1:
   - Statistical temperature transfer (Nuka → on-glacier) via monthly
     regression coefficients, then internal lapse rate for elevation (D-007)
   - Elevation-dependent melt factor: MF(z) = MF + MF_grad * (z - z_ref)
-  - Input is raw Nuka SNOTEL temperature (at 1230m), NOT pre-adjusted
+  - Input is raw Nuka SNOTEL temperature (at 375m / 1230 ft), NOT pre-adjusted
 
 See research_log/decisions.md D-007 and project_plan.md Phase 1 & 3.
 """
@@ -127,7 +127,7 @@ def run_simulation(
         # Month for temperature transfer
         month_idx = _doy_to_month(doy)
 
-        # Statistical transfer: Nuka (1230m) → on-glacier reference (804m)
+        # Statistical transfer: Nuka (375m) → on-glacier reference (804m)
         alpha = transfer_alpha[month_idx]
         beta = transfer_beta[month_idx]
         T_ref = alpha * T_nuka_t + beta  # temperature at ref_elev on glacier

@@ -598,3 +598,85 @@ into projection pipeline. Implement multi-GCM ensemble for uncertainty.
     Encyclopedia of Hydrological Sciences.
   - Maraun, D. & Widmann, M. (2018). Statistical Downscaling and Bias
     Correction for Climate Research. Cambridge University Press.
+
+## D-020: Posterior Ensemble Projections (Top 250 Parameter Sets)
+
+**Date:** 2026-03-11
+**Decision:** Replace single-parameter projections with ensemble projections
+using the top 250 performing parameter sets from the MCMC chain, following
+Geck (2020) on Eklutna Glacier. This propagates both climate uncertainty
+(5 GCMs) and parameter uncertainty (250 param sets) through the projection.
+
+**Method:**
+  - Rank all post-burn-in MCMC samples (120,000) by log-probability
+  - Select top 250 unique parameter sets (best-performing)
+  - Run each (GCM, param_set) pair independently with its own geometry
+    evolution trajectory via delta-h
+  - Total: 250 × 5 GCMs = 1,250 runs per scenario
+  - Aggregate with percentiles (p05, p25, p50, p75, p95) across full ensemble
+
+**Output structure:**
+  - Auto-numbered run directories: `projection_output/PROJ-{NNN}_{label}_{date}/`
+  - Per-scenario ensemble CSV with percentile bands
+  - Per-GCM aggregated CSV (over param samples)
+  - Metadata JSON, peak water JSON
+  - Plotting: `plot_projection_ensemble.py` and `animate_glacier_retreat.py`
+
+**PROJ-002 Results (top 250, SSP2-4.5 & SSP5-8.5):**
+  - SSP2-4.5: Peak water ~WY2043 (8.17 m³/s), 2100 area 18.1 km² (45%)
+  - SSP5-8.5: Peak water ~WY2058 (8.54 m³/s), 2100 area 8.6 km² (21%)
+  - Parameter uncertainty is relatively small; GCM spread dominates
+  - MRI-ESM2-0 is outlier (most conservative retreat)
+
+**Files modified:**
+  - `run_projection.py` — complete rewrite: `load_top_param_sets()`,
+    `aggregate_ensemble()`, auto-numbered `PROJ-###` output dirs
+  - `plot_projection_ensemble.py` — new, 5 plot types with uncertainty bands
+  - `animate_glacier_retreat.py` — new, side-by-side MP4/GIF glacier retreat
+
+**References:**
+  - Geck, J. (2020). MS Thesis, Alaska Pacific University. (Eklutna Glacier)
+
+## D-021: Snowline Validation (Independent Spatial Check)
+
+**Date:** 2026-03-11
+**Decision:** Implement independent validation of DETIM against 22 years
+(1999–2024) of digitized snowline observations. These were never used in
+calibration, providing a true out-of-sample spatial check.
+
+**Method:**
+  - Load observed snowline shapefiles (LineString, UTM 5N) and rasterize
+    onto the 100m model grid
+  - For each year, run the model from Oct 1 to the snowline observation date
+  - Extract modeled snowline as the contour where net balance (accum − melt) = 0
+  - Compare: (a) mean snowline elevation (observed vs modeled), (b) net balance
+    sampled at observed snowline locations (should be ~0)
+
+**Metrics:**
+  - Elevation comparison: obs vs modeled mean snowline altitude per year
+  - Balance at observed snowline: mean m w.e. at obs positions (ideal = 0)
+  - Spatial overlap: fraction of observed snowline in modeled snow vs ice zones
+
+**Results (MAP parameters, 21 valid years):**
+  - Mean bias: +6 m (near zero — model not systematically biased)
+  - RMSE: 189 m
+  - MAE: 122 m
+  - Correlation: r = 0.52
+  - Mean balance at observed snowline: −0.38 m w.e.
+  - Outliers: 2000 and 2005 have very large negative bias (−410m, −628m);
+    likely related to early observation dates (Aug 9, Sep 8) capturing
+    mid-summer rather than end-of-summer snowlines
+  - Post-2017 persistent positive bias (~100–175m) suggests model melts
+    slightly too aggressively in recent years
+
+**Files added:**
+  - `dixon_melt/snowline_validation.py` — validation module
+  - `run_snowline_validation.py` — runner script with 3 plot types
+  - `calibration_output/snowline_validation.csv` — per-year results
+  - `calibration_output/snowline_scatter.png` — obs vs mod scatter
+  - `calibration_output/snowline_timeseries.png` — elevation time series
+  - `calibration_output/snowline_spatial_examples.png` — spatial maps
+
+**References:**
+  - Rabatel, A. et al. (2005). J. Glaciol., 51(172), 539-546.
+  - Hock, R. (1999). J. Glaciol., 45(149), 101-111.
