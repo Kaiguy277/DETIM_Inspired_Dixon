@@ -77,7 +77,34 @@ type determines which radiation factor is applied:
 [See data_provenance.md §1 — summarize here for thesis]
 
 ### 3.3.2 Climate Forcing
-[See data_provenance.md §3–4 — summarize here for thesis]
+
+The primary climate station is the Nuka Glacier SNOTEL (site 1037, 375 m,
+NRCS) located approximately 10 km northwest of Dixon Glacier. Daily mean air
+temperature and precipitation are available from October 1990 to present,
+though the record contains significant gaps in early years: WY2001 (77%
+temperature missing), WY2005 (43%), and WY2000, WY2002–2004, WY2006–2008
+(3–30%). A 192-day precipitation gap in WY2020 (November–June) resulted in
+approximately 1,019 mm of unrecorded accumulation.
+
+To produce a continuous forcing record for WY1999–WY2025, temperature and
+precipitation gaps were filled using a multi-station cascade (D-025). Monthly
+reverse regressions (T_nuka = slope × T_station + intercept) were computed
+from overlapping valid days between Nuka and five nearby SNOTEL stations:
+Middle Fork Bradley (1064, 701 m, 16 km), McNeil Canyon (1003, 411 m, 24 km),
+Anchor River Divide (1062, 503 m, 34 km), Kachemak Creek (1063, 503 m,
+14 km), and Lower Kachemak Creek (1265, 597 m, 13 km). For precipitation,
+monthly ratios (P_nuka / P_mfb) were computed from wet-day pairs (both
+> 0.5 mm d⁻¹).
+
+The gap-filling cascade applies stations in order of prediction skill: Nuka →
+MFB → McNeil → Anchor → Kachemak → Lower Kachemak → linear interpolation
+(≤3 days) → day-of-year climatology. Nuka provides 91.3% of temperature days
+and 98.0% of precipitation days; fill stations contribute the remainder
+(primarily MFB at 6.0% and McNeil at 1.8% for temperature). The resulting
+record contains zero missing values across all 9,862 days. Transfer RMSE on
+overlapping data ranges from 1.0–2.8°C depending on station and month.
+
+[See data_provenance.md for full station details and transfer coefficients.]
 
 ### 3.3.3 Calibration and Validation Data
 [See data_provenance.md §5–6 — summarize here for thesis]

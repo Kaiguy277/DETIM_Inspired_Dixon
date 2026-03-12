@@ -17,14 +17,15 @@ future projections under glacier retreat scenarios.
 - 2 years of measured stake data, 20 years of geodetic constraint
 - On-glacier AWS providing ground truth (2 summers)
 
-### What doesn't work
-- **Temperature transfer is fundamentally broken.** Nuka SNOTEL (off-glacier)
-  cannot be lapse-rate-adjusted to represent on-glacier temperatures. Dixon is
-  5°C colder than Nuka despite being 426m lower (katabatic cooling). See
-  `nuka_dixon_temperature_analysis.md` for full analysis.
-- All 3 calibration attempts failed (cost 15–17.5) because of this.
-- No ice dynamics / glacier geometry evolution.
-- No runoff routing for discharge.
+### What doesn't work (UPDATED 2026-03-12)
+- ~~Temperature transfer~~ — RESOLVED (D-012: identity transfer, D-023: elevation fix)
+- ~~Calibration failures~~ — RESOLVED (CAL-010: Bayesian ensemble, cost 7.7)
+- ~~No ice dynamics~~ — RESOLVED (D-018: delta-h parameterization)
+- ~~No runoff routing~~ — RESOLVED (D-019: linear reservoir routing)
+- ~~Climate data gaps~~ — RESOLVED (D-025: multi-station gap-filling)
+- **PENDING:** Recalibrate (CAL-011) with gap-filled climate data
+- **PENDING:** Re-run projections with recalibrated parameters
+- **PENDING:** Snowline validation re-run (gap-filled data may allow WY2000/2005)
 
 ---
 
@@ -43,7 +44,7 @@ Where:
 - α, β are the monthly regression coefficients from Nuka→Dixon overlap
 - λ_internal is an on-glacier lapse rate (estimated from Dixon AWS + stake
   elevations, or from literature: typically -4 to -6°C/km on-glacier)
-- z_AWS = 804m (Dixon AWS elevation)
+- z_AWS = 1078m (Dixon AWS elevation at ELA site; D-023)
 
 **Pros:** Empirically grounded, captures katabatic dampening.
 **Cons:** Only validated for May–Sep. Winter relationship unknown.

@@ -18,7 +18,7 @@ import time
 PROJECT = Path('/home/kai/Documents/Opus46Dixon_FirstShot')
 OUTPUT_DIR = PROJECT / 'calibration_output'
 STAKE_PATH = PROJECT / 'stake_observations_dixon.csv'
-NUKA_PATH = PROJECT / 'data' / 'climate' / 'nuka_snotel_full.csv'
+CLIMATE_PATH = PROJECT / 'data' / 'climate' / 'dixon_gap_filled_climate.csv'
 DEM_PATH = PROJECT / 'ifsar_2010' / 'dixon_glacier_IFSAR_DTM_5m_full.tif'
 GLACIER_PATH = PROJECT / 'geodedic_mb' / 'dixon_glacier_outline_rgi7.geojson'
 GEODETIC_PATH = PROJECT / 'geodedic_mb' / 'dixon_glacier_hugonnet.csv'
@@ -37,28 +37,8 @@ PARAM_BOUNDS = [
 N_ENSEMBLE = 200  # number of posterior samples to use
 
 
-def load_nuka_raw():
-    df = pd.read_csv(NUKA_PATH, parse_dates=['Date'])
-    df = df.rename(columns={
-        'Date': 'date',
-        'Air Temperature Average (degF)': 'tavg_f',
-        'Precipitation Accumulation (in) Start of Day Values': 'precip_accum_in',
-    })
-    df['temperature'] = (df['tavg_f'] - 32) * 5 / 9
-    bad = (df['temperature'] < -50) | (df['temperature'] > 40)
-    df.loc[bad, 'temperature'] = np.nan
-    if 'precip_accum_in' in df.columns:
-        accum = df['precip_accum_in'].copy()
-        diff = accum.diff()
-        resets = diff < -1.0
-        daily_in = diff.clip(lower=0)
-        daily_in.iloc[0] = 0
-        daily_in[resets] = 0
-        df['precipitation'] = daily_in * 25.4
-    else:
-        df['precipitation'] = 0.0
-    df = df.set_index('date').sort_index()
-    df['temperature'] = df['temperature'].interpolate(method='linear', limit=3)
+def load_gap_filled_climate():
+    df = pd.read_csv(CLIMATE_PATH, parse_dates=['date'], index_col='date')
     return df[['temperature', 'precipitation']]
 
 
@@ -68,8 +48,8 @@ def prepare_water_year_arrays(climate, wy_year):
     wy = climate.loc[start:end]
     if len(wy) < 300:
         return None
-    T = wy['temperature'].ffill().fillna(0).values.astype(np.float64)
-    P = wy['precipitation'].fillna(0).values.astype(np.float64)
+    T = wy['temperature'].values.astype(np.float64)
+    P = wy['precipitation'].values.astype(np.float64)
     doy = np.array([d.timetuple().tm_yday for d in wy.index], dtype=np.int64)
     return T, P, doy
 
@@ -78,8 +58,8 @@ def prepare_period_arrays(climate, start_date, end_date):
     wy = climate.loc[start_date:end_date]
     if len(wy) < 30:
         return None
-    T = wy['temperature'].ffill().fillna(0).values.astype(np.float64)
-    P = wy['precipitation'].fillna(0).values.astype(np.float64)
+    T = wy['temperature'].values.astype(np.float64)
+    P = wy['precipitation'].values.astype(np.float64)
     doy = np.array([d.timetuple().tm_yday for d in wy.index], dtype=np.int64)
     return T, P, doy
 
@@ -118,9 +98,7 @@ def main():
         map_params_raw = json.load(f)
 
     # Load climate
-    climate = load_nuka_raw()
-    climate['temperature'] = climate['temperature'].ffill().fillna(0)
-    climate['precipitation'] = climate['precipitation'].fillna(0)
+    climate = load_gap_filled_climate()
 
     # Load stakes
     stakes = pd.read_csv(STAKE_PATH, parse_dates=['date_start', 'date_end'])

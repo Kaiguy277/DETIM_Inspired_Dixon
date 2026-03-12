@@ -1,13 +1,24 @@
 """
-Climate data ingestion, cleaning, and merging for Dixon Glacier.
+Climate data ingestion, cleaning, and multi-station gap-filling for Dixon Glacier.
 
 Sources:
   - Nuka Glacier SNOTEL (site 1037, 375m / 1230 ft elev) — daily T, precip since 1990
-  - Dixon on-glacier AWS — hourly T, precip during summer field seasons
+  - Middle Fork Bradley (1064, 701m) — best temperature predictor
+  - McNeil Canyon (1003, 411m) — covers WY2001 gaps
+  - Anchor River Divide (1062, 503m) — longest record
+  - Kachemak Creek (1063, 503m) — discontinued 2019
+  - Lower Kachemak Creek (1265, 597m) — since 2015
+  - Dixon on-glacier AWS — hourly T, precip during summer field seasons (validation only)
+
+Gap-filling strategy (D-025):
+  Temperature cascade: Nuka → MFB → McNeil → Anchor → Kachemak → Lower Kach
+                       → linear interp (≤3d) → DOY climatology
+  Precipitation cascade: Nuka → MFB (monthly ratio) → DOY climatology
 """
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from . import config
 
 
 # ── Nuka SNOTEL ─────────────────────────────────────────────────────
@@ -86,7 +97,7 @@ def load_nuka_snotel(csv_path):
 
 # ── Dixon AWS ───────────────────────────────────────────────────────
 
-DIXON_AWS_ELEV = 804.0  # m, approximate (near ABL stake)
+DIXON_AWS_ELEV = 1078.0  # m, at ELA stake site (D-023: was incorrectly 804m/ABL)
 
 
 def load_dixon_aws(csv_path, year=None):
@@ -128,101 +139,379 @@ def dixon_aws_to_daily(df):
     return daily
 
 
-# ── Merging / Gap-filling ───────────────────────────────────────────
+# ── Generic SNOTEL loader ───────────────────────────────────────────
 
-def merge_climate_data(nuka_df, dixon_daily_df=None, lapse_rate=-0.0065):
-    """Merge Nuka SNOTEL with Dixon AWS data.
+def load_snotel_station(csv_path):
+    """Load any SNOTEL CSV (NRCS format) and return daily DataFrame.
 
-    Strategy:
-    - Use Dixon AWS data directly during overlap periods
-    - Use Nuka SNOTEL (adjusted by lapse rate) to fill gaps
-    - Nuka is the backbone for the full historical record
+    Returns DataFrame indexed by date with tavg_c, precip_mm columns.
+    """
+    df = pd.read_csv(csv_path, comment='#', parse_dates=[0])
+    col_map = {}
+    for c in df.columns:
+        cl = c.lower()
+        if 'date' in cl:
+            col_map[c] = 'date'
+        elif 'temperature average' in cl:
+            col_map[c] = 'tavg_f'
+        elif 'temperature maximum' in cl:
+            col_map[c] = 'tmax_f'
+        elif 'temperature minimum' in cl:
+            col_map[c] = 'tmin_f'
+        elif 'precipitation' in cl:
+            col_map[c] = 'precip_accum_in'
+        elif 'snow depth' in cl:
+            col_map[c] = 'snow_depth_in'
+        elif 'snow water' in cl:
+            col_map[c] = 'swe_in'
+    df = df.rename(columns=col_map)
+    df = df.set_index('date').sort_index()
+
+    # Temperature: °F → °C
+    for col_f, col_c in [('tavg_f', 'tavg_c'), ('tmax_f', 'tmax_c'), ('tmin_f', 'tmin_c')]:
+        if col_f in df.columns:
+            df[col_c] = (df[col_f].astype(float) - 32) * 5 / 9
+            bad = (df[col_c] < -50) | (df[col_c] > 40)
+            df.loc[bad, col_c] = np.nan
+
+    # Daily precip from accumulation
+    if 'precip_accum_in' in df.columns:
+        accum = pd.to_numeric(df['precip_accum_in'], errors='coerce')
+        diff = accum.diff()
+        resets = diff < -1.0
+        daily_in = diff.clip(lower=0)
+        daily_in.iloc[0] = 0
+        daily_in[resets] = 0
+        df['precip_mm'] = daily_in * 25.4
+
+    return df
+
+
+def load_all_stations(project_root=None):
+    """Load all SNOTEL stations defined in config.SNOTEL_STATIONS.
+
+    Returns dict of station_key → DataFrame (indexed by date, with tavg_c, precip_mm).
+    """
+    if project_root is None:
+        project_root = Path(__file__).parent.parent
+
+    data = {}
+    for key, info in config.SNOTEL_STATIONS.items():
+        path = Path(project_root) / info['path']
+        if key == 'nuka':
+            data[key] = load_nuka_snotel(str(path))
+        else:
+            data[key] = load_snotel_station(str(path))
+    return data
+
+
+# ── Transfer functions ──────────────────────────────────────────────
+
+def transfer_temp_to_nuka(other_tavg, station_key, month_index):
+    """Apply monthly regression to produce Nuka-equivalent temperature.
 
     Parameters
     ----------
-    nuka_df : DataFrame (daily, indexed by date)
-        From load_nuka_snotel()
-    dixon_daily_df : DataFrame (daily, indexed by date), optional
-        From dixon_aws_to_daily()
-    lapse_rate : float
-        °C/m, for adjusting Nuka temp to Dixon station elevation
+    other_tavg : float or array
+        Temperature at the fill station (°C)
+    station_key : str
+        Key in config.TEMP_TRANSFER_TO_NUKA (e.g., 'mfb')
+    month_index : int or array
+        0-indexed month (0=Jan, 11=Dec)
 
     Returns
     -------
-    DataFrame with columns: temperature, precipitation (at Dixon AWS elevation)
+    Predicted Nuka temperature (°C)
     """
-    # Adjust Nuka temps to Dixon AWS elevation
-    dz = DIXON_AWS_ELEV - NUKA_ELEV  # positive (Dixon 804m is above Nuka 375m)
-    nuka_adj = nuka_df.copy()
-    nuka_adj['tavg_c'] = nuka_adj['tavg_c'] + lapse_rate * dz
+    coeffs = config.TEMP_TRANSFER_TO_NUKA[station_key]
+    slope = coeffs['slopes'][month_index]
+    intercept = coeffs['intercepts'][month_index]
+    return slope * other_tavg + intercept
 
-    # Build output at Nuka backbone dates
-    out = pd.DataFrame(index=nuka_adj.index)
-    out['temperature'] = nuka_adj['tavg_c']
-    out['precipitation'] = nuka_adj['precip_mm']
-    out['source'] = 'nuka'
 
-    # Overlay Dixon AWS where available
-    if dixon_daily_df is not None:
-        overlap = out.index.intersection(dixon_daily_df.index)
-        if len(overlap) > 0:
-            # For temperature: prefer Dixon AWS
-            valid_t = dixon_daily_df.loc[overlap, 'tavg_c'].notna()
-            valid_dates = overlap[valid_t]
-            out.loc[valid_dates, 'temperature'] = dixon_daily_df.loc[valid_dates, 'tavg_c']
-            out.loc[valid_dates, 'source'] = 'dixon_aws'
+def transfer_precip_to_nuka(other_precip, month_index):
+    """Apply monthly ratio to produce Nuka-equivalent precipitation.
 
-            # For precip: prefer Dixon AWS (it's on the glacier)
-            valid_p = dixon_daily_df.loc[overlap, 'precip_mm'].notna()
-            valid_p_dates = overlap[valid_p]
-            out.loc[valid_p_dates, 'precipitation'] = dixon_daily_df.loc[valid_p_dates, 'precip_mm']
+    Parameters
+    ----------
+    other_precip : float or array
+        Precipitation at MFB station (mm)
+    month_index : int or array
+        0-indexed month (0=Jan, 11=Dec)
 
-    # Interpolate small gaps (up to 3 days)
-    out['temperature'] = out['temperature'].interpolate(method='linear', limit=3)
-    out['precipitation'] = out['precipitation'].fillna(0)
+    Returns
+    -------
+    Predicted Nuka precipitation (mm)
+    """
+    ratio = config.PRECIP_RATIO_NUKA_OVER_MFB[month_index]
+    return ratio * other_precip
+
+
+# ── Gap-filling ─────────────────────────────────────────────────────
+
+def gap_fill_temperature(nuka_t, all_stations):
+    """Fill temperature gaps using multi-station cascade.
+
+    Cascade order (config.TEMP_FILL_ORDER):
+      Nuka → MFB → McNeil → Anchor → Kachemak → Lower Kach
+      → linear interp (≤3d) → DOY climatology
+
+    Parameters
+    ----------
+    nuka_t : Series
+        Nuka tavg_c, DatetimeIndex
+    all_stations : dict
+        station_key → DataFrame with tavg_c column
+
+    Returns
+    -------
+    filled_t : Series
+        Gap-filled temperature (Nuka-equivalent)
+    source_labels : Series
+        Source label per day ('nuka', 'mfb', 'interp', 'climatology', etc.)
+    """
+    filled = nuka_t.copy()
+    source = pd.Series('nuka', index=filled.index, dtype='object')
+    source[filled.isna()] = ''
+
+    for station_key in config.TEMP_FILL_ORDER:
+        still_nan = filled.isna()
+        if not still_nan.any():
+            break
+
+        if station_key not in all_stations:
+            continue
+
+        other = all_stations[station_key]
+        if 'tavg_c' not in other.columns:
+            continue
+
+        # Find dates where Nuka is NaN but fill station has data
+        nan_dates = filled.index[still_nan]
+        overlap = nan_dates.intersection(other.index)
+        valid = other.loc[overlap, 'tavg_c'].notna()
+        fill_dates = overlap[valid]
+
+        if len(fill_dates) == 0:
+            continue
+
+        # Apply monthly transfer
+        months = fill_dates.month.values - 1  # 0-indexed
+        other_vals = other.loc[fill_dates, 'tavg_c'].values
+        transferred = np.array([
+            transfer_temp_to_nuka(other_vals[i], station_key, months[i])
+            for i in range(len(fill_dates))
+        ])
+
+        filled.loc[fill_dates] = transferred
+        source.loc[fill_dates] = station_key
+
+    # Linear interpolation for remaining gaps ≤ 3 days
+    still_nan = filled.isna()
+    if still_nan.any():
+        filled_interp = filled.interpolate(method='linear', limit=3)
+        newly_filled = still_nan & filled_interp.notna()
+        filled.loc[newly_filled] = filled_interp.loc[newly_filled]
+        source.loc[newly_filled] = 'interp'
+
+    # DOY climatology for anything still remaining
+    still_nan = filled.isna()
+    if still_nan.any():
+        doy_clim = filled.groupby(filled.index.dayofyear).mean()
+        nan_dates = filled.index[still_nan]
+        doys = nan_dates.dayofyear
+        clim_vals = doy_clim.reindex(doys).values
+        filled.loc[nan_dates] = clim_vals
+        source.loc[nan_dates] = 'climatology'
+
+    return filled, source
+
+
+def gap_fill_precipitation(nuka_p, all_stations):
+    """Fill precipitation gaps using MFB ratio transfer + DOY climatology.
+
+    Cascade: Nuka → MFB (monthly ratio) → DOY climatology
+
+    Parameters
+    ----------
+    nuka_p : Series
+        Nuka precip_mm, DatetimeIndex
+    all_stations : dict
+        station_key → DataFrame with precip_mm column
+
+    Returns
+    -------
+    filled_p : Series
+        Gap-filled precipitation (Nuka-equivalent, mm)
+    source_labels : Series
+        Source label per day
+    """
+    filled = nuka_p.copy()
+    source = pd.Series('nuka', index=filled.index, dtype='object')
+    source[filled.isna()] = ''
+
+    for station_key in config.PRECIP_FILL_ORDER:
+        still_nan = filled.isna()
+        if not still_nan.any():
+            break
+
+        if station_key not in all_stations:
+            continue
+
+        other = all_stations[station_key]
+        if 'precip_mm' not in other.columns:
+            continue
+
+        nan_dates = filled.index[still_nan]
+        overlap = nan_dates.intersection(other.index)
+        valid = other.loc[overlap, 'precip_mm'].notna()
+        fill_dates = overlap[valid]
+
+        if len(fill_dates) == 0:
+            continue
+
+        months = fill_dates.month.values - 1
+        other_vals = other.loc[fill_dates, 'precip_mm'].values
+        transferred = np.array([
+            transfer_precip_to_nuka(other_vals[i], months[i])
+            for i in range(len(fill_dates))
+        ])
+
+        filled.loc[fill_dates] = transferred
+        source.loc[fill_dates] = station_key
+
+    # DOY climatology for remaining
+    still_nan = filled.isna()
+    if still_nan.any():
+        doy_clim = filled.groupby(filled.index.dayofyear).mean()
+        nan_dates = filled.index[still_nan]
+        doys = nan_dates.dayofyear
+        clim_vals = doy_clim.reindex(doys).values
+        filled.loc[nan_dates] = clim_vals
+        source.loc[nan_dates] = 'climatology'
+
+    # Any still NaN → 0 (shouldn't happen, but safety)
+    filled = filled.fillna(0.0)
+
+    return filled, source
+
+
+def prepare_gap_filled_climate(project_root=None):
+    """Full multi-station gap-filling pipeline.
+
+    Produces a complete daily climate record for WY1999–WY2025 with
+    zero NaN values, suitable for model forcing.
+
+    Returns
+    -------
+    DataFrame with columns: temperature, precipitation, temp_source, precip_source
+    """
+    if project_root is None:
+        project_root = Path(__file__).parent.parent
+
+    print("Loading all SNOTEL stations...")
+    all_stations = load_all_stations(project_root)
+
+    nuka = all_stations['nuka']
+    print(f"  Nuka: {len(nuka)} days, "
+          f"T valid: {nuka['tavg_c'].notna().sum()}, "
+          f"P valid: {nuka['precip_mm'].notna().sum()}")
+
+    # Trim to WY range
+    wy_start = config.HISTORICAL_WY_START
+    wy_end = config.HISTORICAL_WY_END
+    start_date = f'{wy_start - 1}-10-01'
+    end_date = f'{wy_end}-09-30'
+
+    # Create complete date index
+    date_idx = pd.date_range(start_date, end_date, freq='D')
+
+    # Reindex Nuka to full range (introduces NaN for missing dates)
+    nuka_t = nuka['tavg_c'].reindex(date_idx)
+    nuka_p = nuka['precip_mm'].reindex(date_idx)
+
+    n_t_nan = nuka_t.isna().sum()
+    n_p_nan = nuka_p.isna().sum()
+    print(f"\n  Period: {start_date} to {end_date} ({len(date_idx)} days)")
+    print(f"  Nuka T gaps: {n_t_nan} days ({100*n_t_nan/len(date_idx):.1f}%)")
+    print(f"  Nuka P gaps: {n_p_nan} days ({100*n_p_nan/len(date_idx):.1f}%)")
+
+    print("\n  Gap-filling temperature...")
+    filled_t, t_source = gap_fill_temperature(nuka_t, all_stations)
+    print(f"    Remaining NaN: {filled_t.isna().sum()}")
+
+    print("  Gap-filling precipitation...")
+    filled_p, p_source = gap_fill_precipitation(nuka_p, all_stations)
+    print(f"    Remaining NaN: {filled_p.isna().sum()}")
+
+    out = pd.DataFrame({
+        'temperature': filled_t,
+        'precipitation': filled_p,
+        'temp_source': t_source,
+        'precip_source': p_source,
+    }, index=date_idx)
+    out.index.name = 'date'
 
     return out
 
 
-def prepare_model_climate(nuka_csv, dixon_csv_paths=None, lapse_rate=-0.0065):
-    """Full climate preparation pipeline.
+def climate_quality_report(df):
+    """Print per-WY source breakdown for gap-filled climate.
 
     Parameters
     ----------
-    nuka_csv : str
-        Path to nuka_snotel_full.csv
-    dixon_csv_paths : list of str, optional
-        Paths to Dixon AWS CSVs
-    lapse_rate : float
+    df : DataFrame from prepare_gap_filled_climate()
 
     Returns
     -------
-    climate_df : DataFrame ready for model.run()
+    summary : DataFrame with per-WY source fractions
     """
-    print("Loading Nuka SNOTEL data...")
-    nuka = load_nuka_snotel(nuka_csv)
-    print(f"  {len(nuka)} days, {nuka['tavg_c'].notna().sum()} with temperature")
+    print("\n" + "=" * 70)
+    print("CLIMATE GAP-FILL QUALITY REPORT")
+    print("=" * 70)
 
-    dixon_daily = None
-    if dixon_csv_paths:
-        parts = []
-        for path in dixon_csv_paths:
-            print(f"Loading Dixon AWS: {Path(path).name}")
-            hourly = load_dixon_aws(path)
-            daily = dixon_aws_to_daily(hourly)
-            print(f"  {len(daily)} days, {daily['tavg_c'].notna().sum()} with temperature")
-            parts.append(daily)
-        dixon_daily = pd.concat(parts)
-        dixon_daily = dixon_daily[~dixon_daily.index.duplicated(keep='last')]
+    # Overall
+    print(f"\n  Total days: {len(df)}")
+    print(f"  Temperature NaN: {df['temperature'].isna().sum()}")
+    print(f"  Precipitation NaN: {df['precipitation'].isna().sum()}")
 
-    print("Merging climate data...")
-    merged = merge_climate_data(nuka, dixon_daily, lapse_rate=lapse_rate)
+    print(f"\n  Temperature sources (overall):")
+    t_counts = df['temp_source'].value_counts()
+    for src, count in t_counts.items():
+        print(f"    {src:15s}: {count:5d} ({100*count/len(df):5.1f}%)")
 
-    valid = merged['temperature'].notna()
-    print(f"  Final: {len(merged)} days, {valid.sum()} with temperature ({100*valid.mean():.0f}%)")
-    print(f"  Date range: {merged.index.min()} to {merged.index.max()}")
+    print(f"\n  Precipitation sources (overall):")
+    p_counts = df['precip_source'].value_counts()
+    for src, count in p_counts.items():
+        print(f"    {src:15s}: {count:5d} ({100*count/len(df):5.1f}%)")
 
-    return merged
+    # Per water year
+    df = df.copy()
+    df['wy'] = df.index.year
+    df.loc[df.index.month >= 10, 'wy'] = df.loc[df.index.month >= 10, 'wy'] + 1
+
+    print(f"\n  {'WY':>6} {'days':>5} {'nuka_T%':>8} {'fill_T%':>8} {'nuka_P%':>8} {'fill_P%':>8} {'T_sources':>30}")
+
+    rows = []
+    for wy, grp in df.groupby('wy'):
+        n = len(grp)
+        nuka_t = (grp['temp_source'] == 'nuka').sum()
+        nuka_p = (grp['precip_source'] == 'nuka').sum()
+        t_sources = grp['temp_source'].value_counts().to_dict()
+        # Remove nuka from source summary for readability
+        fill_sources = {k: v for k, v in t_sources.items() if k != 'nuka'}
+        fill_str = ', '.join(f'{k}:{v}' for k, v in fill_sources.items()) if fill_sources else '-'
+
+        print(f"  {wy:>6} {n:>5} {100*nuka_t/n:>7.1f}% {100*(n-nuka_t)/n:>7.1f}% "
+              f"{100*nuka_p/n:>7.1f}% {100*(n-nuka_p)/n:>7.1f}%  {fill_str}")
+
+        rows.append({
+            'wy': wy, 'n_days': n,
+            'nuka_t_frac': nuka_t / n, 'nuka_p_frac': nuka_p / n,
+            **{f't_{k}': v for k, v in t_sources.items()},
+        })
+
+    return pd.DataFrame(rows)
 
 
 def summarize_climate(df):
@@ -233,9 +522,9 @@ def summarize_climate(df):
     print(f"Temperature coverage: {df['temperature'].notna().sum()}/{len(df)}")
     print(f"Precipitation coverage: {df['precipitation'].notna().sum()}/{len(df)}")
 
-    if 'source' in df.columns:
-        print(f"\nData sources:")
-        print(df['source'].value_counts().to_string())
+    if 'temp_source' in df.columns:
+        print(f"\nTemperature sources:")
+        print(df['temp_source'].value_counts().to_string())
 
     by_year = df.groupby(df.index.year).agg(
         mean_T=('temperature', 'mean'),
@@ -244,3 +533,74 @@ def summarize_climate(df):
     )
     print(f"\nAnnual summary:")
     print(by_year.to_string())
+
+
+# ── Load gap-filled CSV ─────────────────────────────────────────────
+
+def load_gap_filled_climate(csv_path=None, project_root=None):
+    """Load pre-computed gap-filled climate CSV.
+
+    Parameters
+    ----------
+    csv_path : str or Path, optional
+        Explicit path to gap-filled CSV. If None, uses default location.
+    project_root : str or Path, optional
+
+    Returns
+    -------
+    DataFrame with columns: temperature, precipitation, temp_source, precip_source
+    """
+    if csv_path is None:
+        if project_root is None:
+            project_root = Path(__file__).parent.parent
+        csv_path = Path(project_root) / 'data' / 'climate' / 'dixon_gap_filled_climate.csv'
+
+    df = pd.read_csv(csv_path, parse_dates=['date'], index_col='date')
+    return df
+
+
+# ── Main: generate gap-filled CSV ──────────────────────────────────
+
+if __name__ == '__main__':
+    project_root = Path(__file__).parent.parent
+
+    print("=" * 70)
+    print("GENERATING GAP-FILLED CLIMATE CSV (D-025)")
+    print("=" * 70)
+
+    df = prepare_gap_filled_climate(project_root)
+    summary = climate_quality_report(df)
+
+    # Save
+    out_path = project_root / 'data' / 'climate' / 'dixon_gap_filled_climate.csv'
+    df.to_csv(out_path)
+    print(f"\nSaved: {out_path}")
+    print(f"  {len(df)} days, T NaN: {df['temperature'].isna().sum()}, "
+          f"P NaN: {df['precipitation'].isna().sum()}")
+
+    # Verification checks
+    print("\n" + "=" * 70)
+    print("VERIFICATION")
+    print("=" * 70)
+
+    assert df['temperature'].isna().sum() == 0, "Temperature has NaN!"
+    assert df['precipitation'].isna().sum() == 0, "Precipitation has NaN!"
+    print("  [PASS] Zero NaN in output")
+
+    nuka_frac = (df['temp_source'] == 'nuka').mean()
+    print(f"  [INFO] Nuka fraction: {100*nuka_frac:.1f}% (want >90%)")
+    assert nuka_frac > 0.7, f"Nuka fraction too low: {nuka_frac:.2f}"
+
+    # Check WY2005 summer T (was 0 with old fillna(0))
+    wy2005_summer = df.loc['2005-06-01':'2005-08-31', 'temperature']
+    mean_t_2005 = wy2005_summer.mean()
+    print(f"  [INFO] WY2005 Jun-Aug mean T: {mean_t_2005:.1f}°C (want 8-14°C, was ~0°C)")
+    assert mean_t_2005 > 5, f"WY2005 summer T too low: {mean_t_2005:.1f}"
+
+    # Check WY2020 total precip (was ~1176mm with old fillna(0))
+    wy2020 = df.loc['2019-10-01':'2020-09-30', 'precipitation']
+    total_p_2020 = wy2020.sum()
+    print(f"  [INFO] WY2020 total precip: {total_p_2020:.0f}mm (want >1500mm, was ~1176mm)")
+    assert total_p_2020 > 1500, f"WY2020 precip too low: {total_p_2020:.0f}"
+
+    print("\n  All checks passed.")

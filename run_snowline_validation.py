@@ -26,7 +26,7 @@ import json
 PROJECT = Path('/home/kai/Documents/Opus46Dixon_FirstShot')
 DEM_PATH = PROJECT / 'ifsar_2010' / 'dixon_glacier_IFSAR_DTM_5m_full.tif'
 GLACIER_PATH = PROJECT / 'geodedic_mb' / 'dixon_glacier_outline_rgi7.geojson'
-NUKA_PATH = PROJECT / 'data' / 'climate' / 'nuka_snotel_full.csv'
+CLIMATE_PATH = PROJECT / 'data' / 'climate' / 'dixon_gap_filled_climate.csv'
 SNOWLINE_DIR = PROJECT / 'snowlines_all'
 OUTPUT_DIR = PROJECT / 'calibration_output'
 
@@ -37,7 +37,7 @@ def main():
     from dixon_melt.model import precompute_ipot
     from dixon_melt.fast_model import FastDETIM
     from dixon_melt import config
-    from dixon_melt.climate import load_nuka_snotel
+    from dixon_melt.climate import load_gap_filled_climate
     from dixon_melt.snowline_validation import run_all_validation
 
     print("=" * 60)
@@ -66,13 +66,9 @@ def main():
     )
 
     # Climate
-    print("  Loading Nuka SNOTEL...")
-    climate_raw = load_nuka_snotel(str(NUKA_PATH))
-    # Prepare: need temperature and precipitation columns with DatetimeIndex
-    climate = climate_raw[['tavg_c', 'precip_mm']].rename(
-        columns={'tavg_c': 'temperature', 'precip_mm': 'precipitation'})
-    climate['temperature'] = climate['temperature'].interpolate(
-        method='linear', limit=3)
+    print("  Loading gap-filled climate (D-025)...")
+    climate = load_gap_filled_climate(str(CLIMATE_PATH))
+    climate = climate[['temperature', 'precipitation']]
 
     # Run validation
     print(f"\n  Running snowline validation against {SNOWLINE_DIR.name}/...")

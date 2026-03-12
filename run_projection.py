@@ -40,7 +40,7 @@ import time
 PROJECT = Path('/home/kai/Documents/Opus46Dixon_FirstShot')
 DEM_PATH = PROJECT / 'ifsar_2010' / 'dixon_glacier_IFSAR_DTM_5m_full.tif'
 GLACIER_PATH = PROJECT / 'geodedic_mb' / 'dixon_glacier_outline_rgi7.geojson'
-NUKA_PATH = PROJECT / 'data' / 'climate' / 'nuka_snotel_full.csv'
+CLIMATE_PATH = PROJECT / 'data' / 'climate' / 'dixon_gap_filled_climate.csv'
 CMIP6_DIR = PROJECT / 'data' / 'cmip6'
 FARINOTTI_PATH = PROJECT / 'data' / 'ice_thickness' / 'RGI60-01.18059_thickness.tif'
 OUTPUT_BASE = PROJECT / 'projection_output'
@@ -498,7 +498,7 @@ def run_projection(params_path=None, scenario='ssp245', end_year=2100,
     # ── Load & bias-correct CMIP6 ensemble ────────────────────────────
     print(f"\n  Loading CMIP6 ensemble for {scenario}...")
     ensemble = prepare_gcm_ensemble(
-        str(CMIP6_DIR), str(NUKA_PATH), scenario, gcms=gcms)
+        str(CMIP6_DIR), str(CLIMATE_PATH), scenario, gcms=gcms)
 
     if len(ensemble) == 0:
         print("  ERROR: No GCM data available. Run download_cmip6.py first.")

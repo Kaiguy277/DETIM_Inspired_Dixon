@@ -1,0 +1,142 @@
+======================================================================
+DIXON GLACIER DETIM -- CALIBRATION v11 (CAL-011)
+Bayesian Ensemble: DE (MAP) + MCMC (posterior)
+D-026: Recalibration with gap-filled climate (D-025)
+======================================================================
+
+Loading gap-filled climate data (D-025)...
+  9862 days (1998-10-01 to 2025-09-30)
+  Stakes: 25 observations
+  Geodetic: 3 periods
+
+Preparing grid (100.0m)...
+  Shape: (289, 117), Glacier cells: 4011, Area: 40.1 km2
+
+Precomputing potential direct radiation (365 DOYs)...
+  Precomputing I_pot: DOY 1/365...
+  Precomputing I_pot: DOY 30/365...
+  Precomputing I_pot: DOY 60/365...
+  Precomputing I_pot: DOY 90/365...
+  Precomputing I_pot: DOY 120/365...
+  Precomputing I_pot: DOY 150/365...
+  Precomputing I_pot: DOY 180/365...
+  Precomputing I_pot: DOY 210/365...
+  Precomputing I_pot: DOY 240/365...
+  Precomputing I_pot: DOY 270/365...
+  Precomputing I_pot: DOY 300/365...
+  Precomputing I_pot: DOY 330/365...
+  Precomputing I_pot: DOY 360/365...
+  Done in 2.1s
+    2010-01-01_2020-01-01: SKIPPED (validation only, D-016)
+    2000-01-01_2010-01-01: SKIPPED (validation only, D-016)
+
+Calibration targets:
+  Stake annual: 8 (6 measured)
+  Stake summer: 8 (6 measured)
+  Stake winter: 9 (8 measured)
+  Geodetic periods: 1
+    2000-01-01_2020-01-01: 20 usable years
+
+JIT compilation warm-up...
+  Done in 3.3s
+  171 ms per objective evaluation
+
+======================================================================
+PHASE 1: DIFFERENTIAL EVOLUTION (MAP estimate)
+======================================================================
+  Parameters: 6
+  Population: 15 x 6 = 90
+  Max iterations: 200
+  Estimated time: 52 min for 18090 evaluations
+  Fixed: lapse_rate=-5.0 C/km, r_ice/r_snow=2.0, k_wind=0.0
+  Bounds:
+    MF             : [1.000000, 12.000000]
+    MF_grad        : [-0.010000, 0.000000]
+    r_snow         : [0.000020, 0.002000]
+    precip_grad    : [0.000200, 0.006000]
+    precip_corr    : [1.200000, 4.000000]
+    T0             : [0.000000, 3.000000]
+  Priors: MF~TN(5,3), T0~TN(1.5,0.5), others uniform
+  Cost: inverse-variance + geodetic hard penalty (lambda=50.0)
+
+  eval    50 | cost=58232.928 | best=3484.394 | MF=5.02 pc=3.10 T0=0.2 r_s=0.264 | 16s
+  eval   100 | cost=324224.475 | best=9.367 | MF=2.75 pc=1.53 T0=2.3 r_s=0.367 | 24s
+  eval   150 | cost=194644.121 | best=9.367 | MF=8.59 pc=2.01 T0=1.9 r_s=1.801 | 32s
+differential_evolution step 1: f(x)= 9.367179250446284
+  eval   200 | cost=522741.072 | best=9.367 | MF=8.05 pc=3.53 T0=1.3 r_s=1.009 | 41s
+  eval   250 | cost=5543.930 | best=8.963 | MF=10.84 pc=3.04 T0=0.7 r_s=1.003 | 49s
+differential_evolution step 2: f(x)= 8.963076210381026
+  eval   300 | cost=1815754.679 | best=8.963 | MF=10.49 pc=3.62 T0=1.5 r_s=1.903 | 57s
+  eval   350 | cost=2502045.349 | best=8.963 | MF=5.30 pc=3.83 T0=2.0 r_s=0.767 | 66s
+differential_evolution step 3: f(x)= 8.963076210381026
+  eval   400 | cost=383925.655 | best=8.141 | MF=6.13 pc=3.73 T0=0.6 r_s=0.125 | 74s
+  eval   450 | cost=21528.344 | best=8.141 | MF=7.97 pc=2.37 T0=1.0 r_s=1.870 | 83s
+differential_evolution step 4: f(x)= 8.140707761317325
+  eval   500 | cost=16461.385 | best=8.141 | MF=9.95 pc=2.83 T0=0.5 r_s=1.651 | 91s
+differential_evolution step 5: f(x)= 8.140707761317325
+  eval   550 | cost=9.772 | best=8.141 | MF=11.52 pc=1.25 T0=1.2 r_s=1.229 | 100s
+  eval   600 | cost=2150.769 | best=8.141 | MF=8.58 pc=1.77 T0=2.0 r_s=1.875 | 109s
+differential_evolution step 6: f(x)= 8.140707761317325
+  eval   650 | cost=219.664 | best=8.141 | MF=9.40 pc=1.27 T0=0.8 r_s=1.542 | 118s
+  eval   700 | cost=20989.825 | best=8.141 | MF=9.11 pc=1.27 T0=0.2 r_s=1.344 | 128s
+differential_evolution step 7: f(x)= 8.140707761317325
+  eval   750 | cost=536.395 | best=8.141 | MF=10.48 pc=1.52 T0=1.3 r_s=1.503 | 137s
+  eval   800 | cost=6690.439 | best=7.929 | MF=9.20 pc=1.30 T0=2.2 r_s=0.514 | 147s
+differential_evolution step 8: f(x)= 7.929277280166447
+  eval   850 | cost=54411.176 | best=7.610 | MF=9.72 pc=2.58 T0=1.8 r_s=0.532 | 157s
+  eval   900 | cost=243.055 | best=7.597 | MF=6.62 pc=1.68 T0=0.4 r_s=1.745 | 166s
+differential_evolution step 9: f(x)= 7.59724193143218
+  eval   950 | cost=12222.580 | best=7.597 | MF=9.52 pc=1.66 T0=0.6 r_s=1.181 | 175s
+differential_evolution step 10: f(x)= 7.59724193143218
+  eval  1000 | cost=3594.631 | best=7.597 | MF=8.68 pc=1.25 T0=2.2 r_s=1.229 | 184s
+  eval  1050 | cost=1090.791 | best=7.469 | MF=9.21 pc=1.49 T0=1.0 r_s=1.181 | 193s
+differential_evolution step 11: f(x)= 7.468591403692228
+  eval  1100 | cost=8993.029 | best=7.469 | MF=7.20 pc=1.50 T0=2.1 r_s=1.535 | 213s
+  eval  1150 | cost=34212.082 | best=7.469 | MF=6.68 pc=1.38 T0=1.7 r_s=1.742 | 223s
+differential_evolution step 12: f(x)= 7.468591403692228
+  eval  1200 | cost=219.300 | best=7.426 | MF=8.09 pc=1.26 T0=1.4 r_s=0.254 | 233s
+  eval  1250 | cost=32059.238 | best=7.426 | MF=6.32 pc=1.42 T0=0.9 r_s=1.844 | 244s
+differential_evolution step 13: f(x)= 7.425938820190628
+  eval  1300 | cost=650.546 | best=7.426 | MF=9.92 pc=1.51 T0=1.8 r_s=1.630 | 255s
+  eval  1350 | cost=75446.577 | best=7.426 | MF=6.15 pc=1.41 T0=1.1 r_s=0.919 | 263s
+differential_evolution step 14: f(x)= 7.425938820190628
+  eval  1400 | cost=8479.548 | best=7.426 | MF=6.91 pc=1.71 T0=1.2 r_s=1.574 | 272s
+differential_evolution step 15: f(x)= 7.425938820190628
+  eval  1450 | cost=2036.229 | best=7.426 | MF=8.05 pc=1.39 T0=0.6 r_s=1.687 | 281s
+  eval  1500 | cost=3008.149 | best=7.426 | MF=5.91 pc=1.48 T0=0.6 r_s=1.082 | 289s
+differential_evolution step 16: f(x)= 7.425938820190628
+  eval  1550 | cost=8.355 | best=7.426 | MF=7.54 pc=1.61 T0=1.0 r_s=1.516 | 298s
+  eval  1600 | cost=7.638 | best=7.386 | MF=7.07 pc=1.41 T0=0.8 r_s=1.045 | 306s
+differential_evolution step 17: f(x)= 7.385765576910016
+  eval  1650 | cost=1188.977 | best=7.386 | MF=5.93 pc=1.37 T0=3.0 r_s=1.549 | 315s
+  eval  1700 | cost=3431.401 | best=7.386 | MF=6.61 pc=1.32 T0=0.8 r_s=0.514 | 323s
+differential_evolution step 18: f(x)= 7.385765576910016
+  eval  1750 | cost=864.514 | best=7.386 | MF=6.76 pc=1.48 T0=1.4 r_s=1.227 | 332s
+  eval  1800 | cost=8.035 | best=7.386 | MF=8.59 pc=1.68 T0=0.9 r_s=1.915 | 340s
+differential_evolution step 19: f(x)= 7.385765576910016
+  eval  1850 | cost=1604.079 | best=7.368 | MF=4.69 pc=1.38 T0=2.9 r_s=1.574 | 349s
+differential_evolution step 20: f(x)= 7.367676471602177
+  eval  1900 | cost=15710.856 | best=7.368 | MF=6.76 pc=2.03 T0=0.1 r_s=1.408 | 358s
+  eval  1950 | cost=57.955 | best=7.278 | MF=5.83 pc=1.40 T0=0.6 r_s=0.908 | 366s
+differential_evolution step 21: f(x)= 7.27822415307442
+  eval  2000 | cost=960.372 | best=7.278 | MF=7.16 pc=1.48 T0=0.8 r_s=1.388 | 375s
+  eval  2050 | cost=3194.159 | best=7.278 | MF=6.23 pc=1.31 T0=0.9 r_s=0.915 | 384s
+differential_evolution step 22: f(x)= 7.27822415307442
+  eval  2100 | cost=84283.194 | best=7.278 | MF=7.35 pc=3.58 T0=0.0 r_s=0.956 | 393s
+  eval  2150 | cost=76292.499 | best=7.262 | MF=6.76 pc=2.46 T0=1.8 r_s=0.514 | 402s
+differential_evolution step 23: f(x)= 7.2618296276023795
+  eval  2200 | cost=993.718 | best=7.262 | MF=6.60 pc=1.50 T0=0.7 r_s=1.754 | 411s
+  eval  2250 | cost=110.445 | best=7.262 | MF=6.18 pc=1.36 T0=0.5 r_s=1.288 | 419s
+differential_evolution step 24: f(x)= 7.2618296276023795
+  eval  2300 | cost=165.375 | best=7.262 | MF=7.22 pc=1.43 T0=0.2 r_s=1.068 | 428s
+differential_evolution step 25: f(x)= 7.2618296276023795
+  eval  2350 | cost=179367.948 | best=7.262 | MF=6.80 pc=2.39 T0=3.0 r_s=0.876 | 437s
+  eval  2400 | cost=761.143 | best=7.262 | MF=8.17 pc=1.27 T0=0.2 r_s=0.595 | 446s
+differential_evolution step 26: f(x)= 7.2618296276023795
+  eval  2450 | cost=53403.381 | best=7.262 | MF=7.30 pc=2.08 T0=1.8 r_s=0.874 | 455s
+  eval  2500 | cost=8.166 | best=7.231 | MF=7.48 pc=1.39 T0=0.2 r_s=1.074 | 466s
+differential_evolution step 27: f(x)= 7.231148131097191
+  eval  2550 | cost=308.648 | best=7.231 | MF=7.09 pc=1.30 T0=0.3 r_s=1.179 | 477s
+  eval  2600 | cost=2046.028 | best=7.231 | MF=7.84 pc=1.57 T0=0.1 r_s=1.091 | 487s
+differential_evolution step 28: f(x)= 7.231148131097191
+  eval  2650 | cost=2520.833 | best=7.231 | MF=7.94 pc=1.32 T0=2.0 r_s=0.613 | 499s

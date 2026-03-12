@@ -3,38 +3,46 @@
 **Date:** 2026-03-06
 **Referenced by:** D-007 in decisions.md
 
+**CORRECTION (D-023, 2026-03-12):** The Dixon AWS is at the **ELA site
+(1078 m)**, NOT the ABL site (804 m). The elevation difference to Nuka is
+703 m, not 429 m. This eliminates most of the "katabatic residual" reported
+below — the observed -5.1°C offset is explained by a standard -6.5 to
+-7.3 °C/km lapse rate across 703 m, with only ~0–1°C true katabatic cooling.
+The original analysis below is preserved for reference but its interpretation
+of a "~3°C katabatic residual" is an artifact of the elevation error.
+
 ## Overview
 
 Comparison of Nuka Glacier SNOTEL (**375 m** = 1230 ft; corrected D-013) with
-Dixon Glacier on-glacier AWS (804m, at ABL stake) during overlap periods
-(256 days, 2024-04-30 to 2025-09-23, summer seasons only).
+Dixon Glacier on-glacier AWS (**1078 m**, at ELA site; corrected D-023) during
+overlap periods (256 days, 2024-04-30 to 2025-09-23, summer seasons only).
 
-**CORRECTION (D-013):** The original analysis assumed Nuka at 1230 m. The
-NRCS lists Nuka at 1230 feet = 375 m. Dixon AWS (804 m) is 429 m ABOVE
-Nuka, not 426 m below. The "inverted temperature profile" was an artifact
-of the units error.
+**CORRECTION (D-013):** Nuka at 1230 feet = 375 m.
+**CORRECTION (D-023):** Dixon AWS at 1078 m (ELA), not 804 m (ABL).
 
-## Key Finding: Normal Lapse + Modest Katabatic Cooling
+## Key Finding: Normal Lapse Rate — Minimal Katabatic Cooling
 
-**Dixon (804m) is 5.10°C colder than Nuka (375m), consistent with lapse-rate
-cooling (429m × -5.0 C/km = -2.15°C) plus ~3°C of real katabatic cooling.**
+**Dixon (1078m) is 5.10°C colder than Nuka (375m), consistent with lapse-rate
+cooling (703m × -6.5 to -7.3 C/km = -4.6 to -5.1°C). The katabatic residual
+is ~0–1°C, much smaller than the ~3°C originally reported with wrong elevation.**
 
-| Metric | Nuka (375m) | Dixon (804m) |
-|--------|-------------|-------------|
+| Metric | Nuka (375m) | Dixon (1078m) |
+|--------|-------------|---------------|
 | Mean TAVG | 8.03°C | 2.93°C |
 | ΔT (Dixon - Nuka) | — | -5.10°C |
-| Expected ΔT at -5.0°C/km for +429m | — | -2.15°C |
-| Katabatic residual | — | **-2.95°C** |
+| Expected ΔT at -6.5°C/km for +703m | — | -4.57°C |
+| Expected ΔT at -7.3°C/km for +703m | — | -5.13°C |
+| Katabatic residual (at -6.5 lapse) | — | **-0.53°C** |
 
-The katabatic effect is real but modest (~3°C, not ~8°C as originally
-reported). This is consistent with on-glacier cooling measured at other
-maritime glaciers (Gardner & Sharp 2009). In the DETIM framework, this
-cooling is implicitly absorbed by the calibrated melt factor (Hock 1999).
+With the corrected elevation (D-023), the observed offset is almost entirely
+explained by a standard maritime lapse rate. Any remaining katabatic effect
+is < 1°C, consistent with a station at the ELA where glacier surface
+influence is moderate.
 
 ## Monthly Temperature Differences (corrected D-013)
 
-With Nuka at 375m and Dixon at 804m (dz = +429m), a -5.0 C/km lapse
-predicts -2.15°C. Residuals represent true katabatic cooling:
+With Nuka at 375m and Dixon at 1078m (dz = +703m; corrected D-023), a
+-6.5 C/km lapse predicts -4.57°C. Residuals represent true katabatic cooling:
 
 | Month | Nuka °C | Dixon °C | ΔT | Lapse pred | Katabatic residual | n |
 |-------|---------|----------|------|-----------|-------------------|---|

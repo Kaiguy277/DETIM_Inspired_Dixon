@@ -20,7 +20,7 @@ SNOTEL_LAT = 59.698     # from NRCS metadata
 SNOTEL_LON = -150.712   # from NRCS metadata
 
 # ── Dixon on-glacier AWS ────────────────────────────────────────────
-DIXON_AWS_ELEV = 804.0  # m, near ABL stake
+DIXON_AWS_ELEV = 1078.0  # m, at ELA stake site (D-023: was incorrectly 804m/ABL)
 
 # ── Temperature transfer (D-012) ─────────────────────────────────
 # Identity transfer: use raw Nuka SNOTEL temperature at 1230m.
@@ -37,6 +37,87 @@ DIXON_AWS_ELEV = 804.0  # m, near ABL stake
 # be discussed in the thesis as validation, not used for forcing.
 TRANSFER_ALPHA = np.ones(12, dtype=np.float64)   # identity: T_ref = T_nuka
 TRANSFER_BETA = np.zeros(12, dtype=np.float64)    # no offset
+
+# ── Multi-station gap-filling (D-025) ──────────────────────────────
+# Fill stations for Nuka SNOTEL temperature and precipitation gaps.
+# Transfer coefficients computed by compute_transfer_coefficients.py.
+SNOTEL_STATIONS = {
+    'nuka': {
+        'name': 'Nuka Glacier', 'site': 1037, 'elev_m': 375,
+        'path': 'data/climate/nuka_snotel_full.csv',
+    },
+    'mfb': {
+        'name': 'Middle Fork Bradley', 'site': 1064, 'elev_m': 701,
+        'path': 'data/climate/snotel_stations/middle_fork_bradley_1064.csv',
+    },
+    'mcneil': {
+        'name': 'McNeil Canyon', 'site': 1003, 'elev_m': 411,
+        'path': 'data/climate/snotel_stations/mcneil_canyon_1003.csv',
+    },
+    'anchor': {
+        'name': 'Anchor River Divide', 'site': 1062, 'elev_m': 503,
+        'path': 'data/climate/snotel_stations/anchor_river_divide_1062.csv',
+    },
+    'kachemak': {
+        'name': 'Kachemak Creek', 'site': 1063, 'elev_m': 503,
+        'path': 'data/climate/snotel_stations/kachemak_creek_1063.csv',
+    },
+    'lower_kach': {
+        'name': 'Lower Kachemak Ck', 'site': 1265, 'elev_m': 597,
+        'path': 'data/climate/snotel_stations/lower_kachemak_1265.csv',
+    },
+}
+
+# Cascade order for gap-filling (best predictor first)
+TEMP_FILL_ORDER = ['mfb', 'mcneil', 'anchor', 'kachemak', 'lower_kach']
+PRECIP_FILL_ORDER = ['mfb']
+
+# Monthly reverse regression: T_nuka = slope * T_other + intercept
+# Computed from overlapping valid days (compute_transfer_coefficients.py)
+# Index: [Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec]
+TEMP_TRANSFER_TO_NUKA = {
+    'mfb': {
+        'slopes': np.array([0.8687, 0.8431, 0.8167, 0.7163, 0.7189, 0.8206,
+                            0.9550, 0.7823, 0.6566, 0.7137, 0.8023, 0.8181]),
+        'intercepts': np.array([-0.25, -0.06, -0.16, +0.07, +0.99, +1.69,
+                                +1.20, +3.41, +4.03, +1.94, +0.78, -0.04]),
+    },
+    'mcneil': {
+        'slopes': np.array([0.8370, 0.8028, 0.8472, 0.7826, 0.8317, 1.0242,
+                            1.0178, 0.8290, 0.7217, 0.8086, 0.8070, 0.7654]),
+        'intercepts': np.array([+0.02, -0.37, -0.62, -0.82, -0.82, -1.46,
+                                -0.75, +1.80, +2.38, +1.13, +0.70, +0.18]),
+    },
+    'anchor': {
+        'slopes': np.array([0.9010, 0.8414, 0.8275, 0.7528, 0.7203, 0.7722,
+                            0.7478, 0.6671, 0.7055, 0.8049, 0.8706, 0.8699]),
+        'intercepts': np.array([+0.82, +0.37, -0.26, -0.50, -0.03, +1.04,
+                                +2.43, +3.59, +2.76, +1.79, +1.49, +1.24]),
+    },
+    'kachemak': {
+        'slopes': np.array([0.8668, 0.8864, 0.9162, 0.5534, 0.7615, 0.9400,
+                            0.9267, -0.0272, 0.3751, 0.8294, 0.7760, 0.7404]),
+        'intercepts': np.array([-0.81, -0.91, -0.86, -0.52, -0.07, -0.08,
+                                +0.49, +10.77, +4.83, +0.79, -0.37, -1.17]),
+    },
+    'lower_kach': {
+        'slopes': np.array([0.8956, 0.8617, 0.8723, 0.7768, 0.8534, 0.8788,
+                            0.8412, 0.8050, 0.8620, 0.8822, 0.9298, 0.9122]),
+        'intercepts': np.array([-0.55, -0.57, -0.25, +0.19, +0.54, +1.45,
+                                +2.32, +2.72, +1.83, +1.39, +0.60, -0.07]),
+    },
+}
+
+# Monthly precipitation ratio: P_nuka = ratio * P_mfb
+# Computed from wet-day pairs (both > 0.5mm) on overlapping days
+PRECIP_RATIO_NUKA_OVER_MFB = np.array([
+    1.636, 1.652, 1.701, 1.574, 2.196, 2.395,
+    1.855, 2.030, 1.525, 1.457, 1.394, 1.611,
+])
+
+# Historical water year range for gap-filled output
+HISTORICAL_WY_START = 1999
+HISTORICAL_WY_END = 2025
 
 # ── Wind redistribution (D-011) ───────────────────────────────────
 # Prevailing wind during precipitation: ESE (~100 deg), from Gulf of

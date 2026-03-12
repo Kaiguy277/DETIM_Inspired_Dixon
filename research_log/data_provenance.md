@@ -70,8 +70,8 @@ Code: `dixon_melt/terrain.py`.
 2. Temperature converted °F → °C
 3. Precipitation: cumulative inches → daily increments in mm
 4. Negative daily precip increments (gauge resets) flagged and set to 0
-5. Temperature adjusted to Dixon glacier reference elevation (804 m) using
-   calibrated lapse rate
+5. Temperature adjusted to Dixon glacier reference elevation (1078 m, ELA site;
+   D-023) using calibrated lapse rate
 
 ### Known Issues
 - **Elevation units:** NRCS reports in feet; original data entry recorded
@@ -92,7 +92,7 @@ Code: `dixon_melt/terrain.py`.
 | Field | Value |
 |-------|-------|
 | Files | `Dixon24WX_RAW.csv`, `Dixon25_WX.csv` |
-| Location | Near ABL stake, 804 m elevation |
+| Location | At ELA stake site, 1078 m elevation (D-023: was incorrectly recorded as 804 m / ABL) |
 | Type | Seasonal deployment (summer field seasons) |
 
 ### 2024 Season
@@ -222,3 +222,36 @@ flow-dynamics inversion. Published accuracy: mean absolute error of
 Machguth, H., Maussion, F., & Pandit, A. (2019). A consensus estimate
 for the ice thickness distribution of all glaciers on Earth. Nature
 Geoscience, 12, 168–173.
+
+---
+
+## Gap-Filled Climate Record (D-025)
+
+**File:** `data/climate/dixon_gap_filled_climate.csv`
+**Period:** 1998-10-01 to 2025-09-30 (WY1999–WY2025, 9,862 days)
+**Created:** 2026-03-12
+**Method:** Multi-station cascade gap-fill (see D-025)
+
+**Sources (in cascade priority order):**
+1. Nuka Glacier SNOTEL (1037, 375m) — primary, 91.3% of T days, 98.0% of P days
+2. Middle Fork Bradley (1064, 701m) — 6.0% of T, monthly regression transfer
+3. McNeil Canyon (1003, 411m) — 1.8% of T, monthly regression transfer
+4. Anchor River Divide (1062, 503m) — 0.3% of T
+5. Kachemak Creek (1063, 503m) — 0.1% of T (discontinued 2019)
+6. Lower Kachemak Creek (1265, 597m) — not needed for T
+7. Linear interpolation (≤3d gaps) — 0.4% of T
+8. DOY climatology — 0.1% of T (WY1999 only, pre-MFB record)
+
+**Precipitation fill:** MFB only, using monthly ratio P_nuka/P_mfb.
+Applied only in WY2020 (192-day gap, 52.7% of WY) and WY2022-2023 (minor).
+
+**Transfer coefficients:** Monthly reverse regressions (T_nuka = slope × T_other + intercept)
+computed from all overlapping valid days. Stored in `config.py` as `TEMP_TRANSFER_TO_NUKA`.
+Coefficient details in `calibration_output/transfer_coefficients.csv`.
+
+**Quality:** Zero NaN in output. Verified:
+- WY2005 Jun-Aug mean T = 8.5°C (was 0°C with old fillna approach)
+- WY2020 total precip = 2,307mm (was 1,176mm with old fillna approach)
+- Nuka fraction >90% overall (fill concentrated in WY1999-2008)
+
+**Supersedes:** Previous approach of `ffill().fillna(0)` on raw Nuka data.

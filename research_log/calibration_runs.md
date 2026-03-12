@@ -121,6 +121,7 @@ reference elevation mismatch — see D-006.
 1. (D-005) SWE=0 for Oct 1 starts, observed SWE for summer starts
 2. (D-005) snow_redist removed
 3. (D-006) station_elev corrected from 1230m → 804m to match merged climate data
+   [NOTE: D-023 later corrected Dixon AWS to 1078m (ELA site, not ABL)]
 
 ### Configuration
 Same DE settings as CAL-002 (120 maxiter, 15 popsize, 7 params).
@@ -925,3 +926,173 @@ forcing error). Both acknowledged as known limitations.
 - `projection_output/projection_ssp{245,585}_*_2100.csv` (5 GCMs + ensemble each)
 - `projection_output/peak_water_ssp{245,585}.json`
 - `projection_output/*.png` (diagnostic plots)
+
+---
+
+## NOTE: Climate Input Fix (D-025) — Impacts CAL-010 and All Projections
+
+**Date:** 2026-03-12
+
+CAL-010 was run with the old `ffill().fillna(0)` climate preprocessing,
+which introduced severe errors in gap years:
+- WY2000: summer T filled at ~3°C (actual ~11°C) → melt suppressed
+- WY2001: 282-day gap filled at ~2°C → nearly zero summer melt
+- WY2005: summer T filled at -7.7°C → ZERO melt + spurious snow accumulation
+- WY2020: 192-day precip gap → 1,176mm instead of ~2,307mm
+
+**D-025 implemented multi-station gap-filling:**
+- 5 nearby SNOTEL stations with monthly regression transfer
+- 91.3% original Nuka, 6.0% MFB, 1.8% McNeil, 0.4% interp, 0.1% other
+- All downstream consumers updated to use `dixon_gap_filled_climate.csv`
+
+**Expected impact on recalibration (CAL-011):**
+1. Geodetic sub-period mismatch should shrink (2000-2010 was most affected)
+2. MF may decrease (less compensation needed for suppressed melt years)
+3. WY2000 and WY2005 contribute real information (not noise) to calibration
+4. Snowline validation D-022 exclusions may no longer be needed (gap-filled
+   data replaces the fillna(0) that caused terminus-level snowlines)
+
+**All CAL-010 results and PROJ-001/002 results are based on the old climate
+and should be re-run with gap-filled data before thesis submission.**
+
+---
+
+## Run CAL-011: Recalibration with Gap-Filled Climate (D-026)
+
+**Date:** 2026-03-12
+**Script:** `run_calibration_v11.py`
+**Status:** KILLED (step 28/200, cost 7.23) — superseded by CAL-012 (D-027)
+**Decision:** D-026
+
+### Changes from CAL-010
+1. **Climate input:** `dixon_gap_filled_climate.csv` (D-025) — zero NaN,
+   91.3% Nuka + 5-station cascade gap-fill
+2. **Coverage filter removed:** `t_cov < 0.85` check no longer needed — all
+   20 geodetic water years (WY2001–2020) now contribute
+3. **Poisoned years fixed:** WY2000, WY2001, WY2005, WY2020 now have
+   realistic temperature and precipitation from nearby stations
+
+### Configuration
+Same as CAL-010 (D-017):
+
+| Setting | Value |
+|---------|-------|
+| Grid resolution | 100 m |
+| Method | DE (MAP) + emcee MCMC (posterior) |
+| DE population | 15 per param (90 total) |
+| DE max iterations | 200 |
+| DE tolerance | 1e-4 |
+| MCMC walkers | 24 (4x ndim) |
+| MCMC steps | 10,000 |
+| MCMC burn-in | 2,000 minimum |
+
+### Parameters (6 free — unchanged from CAL-010)
+| Parameter | Lower | Upper | Prior |
+|-----------|-------|-------|-------|
+| MF (mm/d/K) | 1.0 | 12.0 | TruncNorm(5.0, 3.0) |
+| MF_grad (mm/d/K/m) | -0.01 | 0.0 | Uniform |
+| r_snow | 0.02e-3 | 2.0e-3 | Uniform |
+| precip_grad (frac/m) | 0.0002 | 0.006 | Uniform |
+| precip_corr | 1.2 | 4.0 | Uniform |
+| T0 (C) | 0.0 | 3.0 | TruncNorm(1.5, 0.5) |
+
+### Fixed parameters (unchanged)
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| lapse_rate | -5.0 C/km | Gardner & Sharp 2009, Roth 2023 |
+| r_ice/r_snow | 2.0 | Hock 1999 Table 4 mid-range |
+| k_wind | 0.0 | CAL-007 converged to ~0 |
+| ref_elev | 375 m | Nuka SNOTEL (D-013) |
+
+### Hypothesis
+With corrected climate forcing:
+1. All 20 geodetic years contribute real melt → r_snow may come off upper bound
+2. WY2005 summer T realistic → less MF compensation needed
+3. T0 gains gradient signal in gap years → may move up from ~0°C
+4. Geodetic sub-period mismatch (2000-2010 vs 2010-2020) should shrink
+5. Overall cost should decrease (less internal contradiction)
+
+### Results
+**KILLED** at DE step 28/200 (eval ~2650, best cost 7.23).
+Superseded by CAL-012 (D-027) before completion — no need to run single-seed
+DE when multi-seed approach addresses multimodality concern.
+
+Early DE trajectory showed best cost 7.23 at step 28, with MF~7.5, pc~1.39,
+T0~0.2, r_snow~1.07e-3. Notably T0 was already drifting toward 0 again.
+
+### Output files (partial)
+- `calibration_output/calibration_v11_stdout.log` (partial, killed at step 28)
+
+---
+
+## Run CAL-012: Multi-Seed DE + Multi-Chain MCMC (D-027)
+
+**Date:** 2026-03-12
+**Script:** `run_calibration_v12.py`
+**Status:** PENDING
+**Decision:** D-027
+
+### Changes from CAL-011
+1. **Multi-seed DE:** 5 seeds [42, 123, 456, 789, 2024] to detect multimodality
+2. **Hierarchical clustering:** DE optima clustered by normalized Chebyshev
+   distance (10% of parameter range threshold)
+3. **Multi-chain MCMC:** separate emcee chain from each distinct mode
+4. **Combined posterior:** equal-weighted concatenation across all chains
+
+### Rationale (D-027)
+CAL-010 ran single-seed DE → single MCMC chain. If the posterior is multimodal
+(e.g., high-MF/low-r_snow vs low-MF/high-r_snow), the single chain would miss
+alternative modes. Multi-seed DE probes the cost surface broadly; if seeds
+converge to different regions, separate MCMC chains explore each mode.
+
+### Configuration
+Same model and target setup as CAL-011:
+
+| Setting | Value |
+|---------|-------|
+| Grid resolution | 100 m |
+| DE seeds | 5 (42, 123, 456, 789, 2024) |
+| DE population | 15 per param (90 total) per seed |
+| DE max iterations | 200 per seed |
+| Cluster threshold | 10% of parameter range |
+| MCMC walkers | 24 (4x ndim) per chain |
+| MCMC steps | 10,000 per chain |
+| MCMC burn-in | 2,000 minimum per chain |
+
+### Parameters (6 free — unchanged)
+| Parameter | Lower | Upper | Prior |
+|-----------|-------|-------|-------|
+| MF (mm/d/K) | 1.0 | 12.0 | TruncNorm(5.0, 3.0) |
+| MF_grad (mm/d/K/m) | -0.01 | 0.0 | Uniform |
+| r_snow | 0.02e-3 | 2.0e-3 | Uniform |
+| precip_grad (frac/m) | 0.0002 | 0.006 | Uniform |
+| precip_corr | 1.2 | 4.0 | Uniform |
+| T0 (C) | 0.0 | 3.0 | TruncNorm(1.5, 0.5) |
+
+### Fixed parameters (unchanged)
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| lapse_rate | -5.0 C/km | Gardner & Sharp 2009, Roth 2023 |
+| r_ice/r_snow | 2.0 | Hock 1999 Table 4 |
+| k_wind | 0.0 | CAL-007 converged to ~0 |
+| ref_elev | 375 m | Nuka SNOTEL (D-013) |
+
+### Estimated runtime
+- Phase 1 (DE): ~50 min/seed × 5 seeds = ~4.2 hrs
+- Phase 1.5 (clustering): seconds
+- Phase 2 (MCMC): ~8 hrs/chain × N_modes chains
+- Best case (1 mode): ~12 hrs total
+- Worst case (5 modes): ~44 hrs total
+
+### Results
+*Pending — run not yet started*
+
+### Expected output files
+- `calibration_output/calibration_log_v12_de.csv` (all seeds)
+- `calibration_output/de_multistart_v12.json` (optima + clustering)
+- `calibration_output/best_params_v12.json` (best mode MAP)
+- `calibration_output/mcmc_chain_v12_mode{N}.npy` (per mode)
+- `calibration_output/mcmc_logprob_v12_mode{N}.npy` (per mode)
+- `calibration_output/posterior_samples_v12.csv` (combined)
+- `calibration_output/corner_plot_v12.png`
+- `calibration_output/calibration_summary_v12.json`

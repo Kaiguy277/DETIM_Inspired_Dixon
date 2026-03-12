@@ -26,7 +26,7 @@ snowmelt model including potential direct solar radiation. J. Glaciol., 45(149).
 
 **Date:** Prior sessions
 **Decision:** Primary forcing from Nuka SNOTEL (site 1037, 1230m, ~20 km from
-Dixon), supplemented by on-glacier AWS at ABL stake (804m) for 2024–2025 summers.
+Dixon), supplemented by on-glacier AWS at ELA site (1078m; D-023, was 804m) for 2024–2025 summers.
 **Rationale:** Nuka SNOTEL is the nearest long-record station with daily T and P
 going back to 1990. On-glacier AWS provides ground truth for lapse rate validation
 during summer field seasons.
@@ -85,9 +85,13 @@ final cost = 15.0 (very poor).
 **Date:** 2026-03-06
 **Decision:** Change model station_elev from 1230m (SNOTEL) to 804m (Dixon AWS)
 to match the merged climate data's actual reference elevation.
+**[NOTE: D-023 later corrected Dixon AWS elevation to 1078m (ELA site). The
+logic of this decision remains valid — the ref_elev should match the merged
+climate data's target elevation — but the actual elevation was wrong.]**
 **Rationale:** The merged climate file (`dixon_model_climate.csv`) contains
 temperatures already lapse-rate adjusted from Nuka SNOTEL (1230m) down to
-Dixon AWS elevation (804m) — see `climate.py:merge_climate_data()` line 154–157.
+Dixon AWS elevation (804m; later corrected to 1078m in D-023) — see
+`climate.py:merge_climate_data()` line 154–157.
 But `FastDETIM` was initialized with `config.SNOTEL_ELEV = 1230m`, causing the
 model to apply the lapse rate from the wrong base elevation.
 
@@ -109,16 +113,19 @@ to FastDETIM. This is a one-line change in `run_calibration_full.py`.
 downscaling based on empirical Nuka↔Dixon relationship.
 **Analysis:** See `research_log/nuka_dixon_temperature_analysis.md` for full details.
 
-**Key finding:** Dixon AWS (804m, on-glacier) is **5.10°C colder** than Nuka
-SNOTEL (1230m, off-glacier) during summer overlap (n=256 days). Dixon is colder
-100% of the time despite being 426m lower in elevation. This is katabatic
-cooling — cold glacier surface air draining downslope creates a persistent
-temperature inversion.
+**Key finding:** Dixon AWS is **5.10°C colder** than Nuka SNOTEL during summer
+overlap (n=256 days).
+**[NOTE (D-023): This analysis assumed Dixon at 804m and Nuka at 1230m — BOTH
+were wrong. With corrected elevations (Dixon=1078m ELA, Nuka=375m), the 703m
+elevation difference at -6.5 to -7.3 C/km fully explains the -5.1°C offset.
+There is NO katabatic inversion — the cooling is a normal lapse rate. The
+"dampened slope" (0.695) includes real on-glacier boundary layer effects but
+the large constant offset is simply elevation.]**
 
-**Quantified bias:** The merged climate data uses -6.5°C/km to adjust Nuka to
-Dixon elevation, adding +2.77°C. True relationship is -5.10°C. Net bias:
-**+7.87°C too warm** at glacier surface during summer. This is the actual root
-cause of all calibration failures (not D-005 or D-006, though both were also bugs).
+**Quantified bias (original, partially superseded by D-013 and D-023):**
+The merged climate data uses -6.5°C/km to adjust Nuka to Dixon elevation,
+adding +2.77°C. True relationship is -5.10°C. Net bias:
+**+7.87°C too warm** at glacier surface during summer.
 
 **Regression:** T_dixon = 0.695 × T_nuka + (-2.650), R²=0.696
 - Slope < 1 → glacier dampens temperature variability
@@ -722,3 +729,290 @@ threshold return `'bad_climate'` and are logged as skipped.
 
 **Files modified:**
   - `dixon_melt/snowline_validation.py` — added melt-season NaN check
+
+---
+
+## D-023: Correct Dixon AWS Elevation from 804m to 1078m
+
+**Date:** 2026-03-12
+**Status:** CONFIRMED
+
+**Problem:** The Dixon on-glacier AWS was recorded at 804 m (ABL stake
+elevation) in config.py, climate.py, fast_model.py, and all research log
+files. This is incorrect — the weather station was deployed at the ELA
+stake site (1078 m), not the ABL site.
+
+**Evidence:** Temperature comparison of Dixon AWS (2024–2025 summer data)
+vs Nuka SNOTEL (375 m) shows a mean daily offset of -4.6°C (2024) to
+-5.6°C (2025). At a -6.5 °C/km lapse rate:
+  - **1078 m predicts -4.6°C offset** — exact match (2024)
+  - 804 m predicts -2.8°C offset — 1.8°C too warm, even before katabatic
+
+Monthly breakdown (2024 summer, Dixon minus Nuka):
+  May: -3.6°C, Jun: -4.7°C, Jul: -5.2°C, Aug: -5.0°C, Sep: -4.7°C
+
+Cross-validated against Middle Fork Bradley SNOTEL (701 m, 16 km away):
+Dixon is 4.2°C colder than MFB despite only 377 m elevation difference,
+again consistent with 1078 m + standard lapse, not 804 m.
+
+**Parallel to D-013:** Same class of error — incorrect elevation metadata.
+D-013 corrected Nuka from 1230 m → 375 m (feet vs meters). D-023 corrects
+Dixon AWS from 804 m → 1078 m (ABL vs ELA site).
+
+**Impact on model:** The Dixon AWS is currently used only for summer
+gap-filling (climate.py:merge_climate_data) with limited overlap days.
+The fast_model.py ref_elev parameter (used in the statistical temperature
+transfer) was already set from calibration, not from DIXON_AWS_ELEV.
+However, correcting this is essential for:
+  1. Accurate temperature merge when Dixon AWS data is available
+  2. Correct interpretation of on-glacier precipitation observations
+  3. Future multi-station gap-filling using Dixon AWS
+
+**Files modified:**
+  - `dixon_melt/config.py` — DIXON_AWS_ELEV: 804.0 → 1078.0
+  - `dixon_melt/climate.py` — DIXON_AWS_ELEV: 804.0 → 1078.0, updated comments
+  - `dixon_melt/fast_model.py` — updated ref_elev comments
+  - `research_log/data_provenance.md` — corrected AWS location/elevation
+  - `research_log/decisions.md` — this entry
+
+---
+
+## D-024: Multi-Station Climate Analysis — Dixon AWS as Ground Truth
+
+**Date:** 2026-03-12
+**Status:** ANALYSIS COMPLETE
+
+**Motivation:** The model predicts conditions on the glacier, so all station
+transfer relationships should be evaluated against Dixon AWS (1078m, ELA site),
+not against each other. Previous analysis compared SNOTEL stations to Nuka;
+this reframes everything around Dixon as ground truth.
+
+**Data sources evaluated (7 total):**
+
+| Station | Site | Elev | Dist | Record | T corr vs Dixon | T RMSE |
+|---------|------|------|------|--------|-----------------|--------|
+| Dixon AWS | — | 1078m | 0km | 2024–25 summers | — | — |
+| Nuka Glacier SNOTEL | 1037 | 375m | 10km | 1990– | r=0.863 | 5.3°C |
+| Mid Fork Bradley SNOTEL | 1064 | 701m | 16km | 1990– | **r=0.877** | **4.8°C** |
+| McNeil Canyon SNOTEL | 1003 | 411m | 24km | 1986– | r=0.872 | 5.9°C |
+| Anchor River Div SNOTEL | 1062 | 503m | 34km | 1980– | r=0.851 | 5.9°C |
+| Lower Kachemak Ck SNOTEL | 1265 | 597m | 13km | 2015– | r=0.869 | 5.0°C |
+| Kachemak Creek SNOTEL | 1063 | 503m | 14km | 2003–2019 | — | — |
+
+**Key findings — Temperature:**
+
+1. **MFB is the best single predictor of Dixon temperature** (r=0.877,
+   RMSE=4.8°C). Closest in elevation (+377m) and same mountain group.
+2. All transfer slopes are 0.3–0.8 — the glacier dampens temperature
+   variability (real boundary layer physics, not an artifact).
+3. **August is the hardest month** to predict: slopes drop to 0.3–0.5,
+   r² drops to 0.15–0.37. Peak melt season = maximum glacier-surface
+   decoupling from free-air temperature.
+4. May and September have the best transfers (r² ~0.55–0.60).
+5. A simple lapse rate consistently overpredicts Dixon temperature —
+   regression transfer is required.
+
+**Monthly transfer coefficients (T_dixon = slope × T_station + intercept):**
+
+MFB → Dixon:
+  May: 0.745x - 2.84  (r²=0.60)
+  Jun: 0.559x - 1.30  (r²=0.75)
+  Jul: 0.591x - 1.11  (r²=0.52)
+  Aug: 0.318x + 1.53  (r²=0.26)
+  Sep: 0.453x + 0.19  (r²=0.58)
+
+Nuka → Dixon:
+  May: 0.666x - 2.81  (r²=0.57)
+  Jun: 0.534x - 1.27  (r²=0.50)
+  Jul: 0.611x - 1.55  (r²=0.37)
+  Aug: 0.391x + 0.56  (r²=0.14)
+  Sep: 0.770x - 2.98  (r²=0.57)
+
+**Key findings — Precipitation:**
+
+1. **Nuka has the best precip correlation with Dixon** (r=0.75 on wet
+   days), despite 703m elevation difference — same orographic regime.
+2. Dixon receives ~0.78× Nuka precip but ~1.7× MFB precip.
+3. Event detection hit rate: Nuka and MFB both ~80% (when it rains on
+   Dixon, those stations also record rain).
+4. Precip ratios vary seasonally (peaks Aug/Sep).
+
+**Implications for gap-filling strategy:**
+- **Temperature:** Use MFB as primary gap-fill source (best RMSE), with
+  McNeil as backup. Apply monthly regression transfer, not simple lapse.
+- **Precipitation:** Use Nuka as primary (best correlation with Dixon),
+  with MFB ratio-scaling for WY2020 gap.
+- The existing fast_model.py monthly transfer (alpha/beta) approach is
+  validated — but coefficients should be refit against the full Dixon
+  record, not just the pre-D-023 analysis.
+
+**Caveat:** Dixon AWS covers summer only (May–Sep/Oct). Winter transfer
+relationships are extrapolated — we cannot validate them. The dampening
+effect (slope < 1) may be weaker or absent in winter when the glacier
+surface is snow-covered and katabatic winds are reduced.
+
+**Scripts:** `plot_dixon_vs_all.py`, `analyze_snotel_stations.py`
+**Plots:** `calibration_output/dixon_vs_all_*.png`
+
+
+---
+
+## D-025: Multi-Station Climate Gap-Filling Pipeline
+
+**Date:** 2026-03-12
+
+**Decision:** Replace `ffill().fillna(0)` gap handling with a multi-station
+cascade that transfers nearby SNOTEL observations into Nuka-equivalent values
+using monthly regression coefficients.
+
+**Problem:**
+Nuka SNOTEL has severe data gaps that poisoned calibration:
+- Temperature: WY2000 (56d), WY2001 (282d), WY2002 (102d), WY2005 (157d)
+- Precipitation: WY2020 (192d, 1,019mm of real precip lost)
+- `ffill().fillna(0)` set summer T to 0°C, killing melt in early years
+- Model compensated by cranking up MF, over-melting in clean years
+
+**Method:**
+1. Compute monthly reverse regressions: T_nuka = slope × T_other + intercept
+   for each fill station, using all overlapping valid days.
+2. Compute monthly precipitation ratios: P_nuka / P_mfb on wet-day pairs.
+3. Temperature cascade: Nuka → MFB → McNeil → Anchor → Kachemak → Lower Kach
+   → linear interp (≤3d) → DOY climatology.
+4. Precipitation cascade: Nuka → MFB (monthly ratio) → DOY climatology.
+5. Output: `data/climate/dixon_gap_filled_climate.csv` — zero NaN, 9,862 days.
+
+**Results:**
+- 91.3% of days use original Nuka data (target was >90%)
+- Fill stations: MFB 6.0%, McNeil 1.8%, interp 0.4%, anchor 0.3%, clim 0.1%
+- WY2005 Jun-Aug mean T: 8.5°C (was ~0°C with old approach)
+- WY2020 total precip: 2,307mm (was ~1,176mm with old approach)
+- Transfer RMSE: 1-3°C depending on station and month
+
+**Alternatives considered:**
+- ERA5 reanalysis: coarser, introduces different biases
+- Single-station (MFB only): doesn't cover all gap years
+- Dixon AWS for forcing: summer-only, too short, wrong purpose (validation)
+
+**Downstream changes:**
+- `run_calibration_v10.py`: loads gap-filled CSV, asserts no NaN
+- `run_snowline_validation.py`: loads gap-filled CSV
+- `run_projection.py`: gap-filled CSV for bias correction reference
+- All plotting scripts: updated to use gap-filled CSV
+
+**Next steps:** Recalibrate (CAL-011) with gap-filled climate → expect
+MF to decrease (less compensation needed) and geodetic sub-period mismatch
+to shrink.
+
+**Scripts:** `compute_transfer_coefficients.py`, `plot_climate_gap_fill_diagnostics.py`
+**Plots:** `calibration_output/climate_gap_fill_diagnostics.png`,
+  `calibration_output/climate_gap_fill_by_wy.png`,
+  `calibration_output/transfer_validation_scatter.png`
+
+---
+
+## D-026: Recalibrate with Gap-Filled Climate (CAL-011)
+
+**Date:** 2026-03-12
+**Decision:** Re-run the CAL-010 Bayesian ensemble calibration (DE + MCMC)
+with the multi-station gap-filled climate data from D-025, keeping the same
+6 free parameters, bounds, priors, and fixed parameters.
+
+**Rationale:**
+CAL-010 was run with the old `ffill().fillna(0)` climate preprocessing,
+which introduced severe errors in gap years (WY2000, WY2001, WY2005, WY2020).
+D-025 replaced this with a 5-station cascade gap-fill producing zero-NaN
+forcing data. The calibration must be re-run before any results can be used
+in the thesis.
+
+**What changed from CAL-010:**
+1. Climate input: `dixon_gap_filled_climate.csv` (D-025) — zero NaN, 91.3% Nuka
+2. Coverage filter removed: the `t_cov < 0.85` filter in `build_calibration_targets()`
+   excluded years with poor temperature coverage. With gap-filled data (zero NaN),
+   all 20 geodetic water years (WY2001–2020) now contribute to calibration.
+3. Previously poisoned years now provide real information:
+   - WY2000: summer T was ~3°C (fillna), now ~11°C
+   - WY2001: 282-day gap filled at ~2°C, now realistic seasonal cycle
+   - WY2005: summer T was -7.7°C → ZERO melt, now 8.5°C mean
+   - WY2020: precip was 1,176mm (gap), now 2,307mm
+
+**What stayed the same:**
+- 6 free parameters: MF, MF_grad, r_snow, precip_grad, precip_corr, T0
+- All bounds unchanged
+- Priors: MF~TN(5,3), T0~TN(1.5,0.5)
+- Fixed: lapse_rate=-5.0 C/km, r_ice=2×r_snow, k_wind=0
+- DE config: 200 maxiter, 15 popsize, seed 42
+- MCMC config: 24 walkers, 10,000 steps, 2,000 min burn-in
+- Geodetic target: 2000-2020 mean only (sub-periods for validation)
+
+**Expected outcomes:**
+1. Geodetic sub-period mismatch should shrink (2000-2010 was most affected)
+2. MF may decrease (less compensation needed for suppressed melt years)
+3. r_snow may come off upper bound (melt budget spread across more real years)
+4. T0 may move up from ~0°C (rain/snow partition now matters in gap years)
+5. Cost function value may decrease (less internal contradiction in targets)
+
+**Alternatives considered:**
+- Adjusting bounds or priors: deferred — want to see the data effect first
+- Freeing lapse rate: would re-introduce equifinality seen in CAL-009
+- Freeing r_ice/r_snow ratio: revisit if r_snow still hits upper bound
+
+**Script:** `run_calibration_v11.py`
+**Output prefix:** v11
+
+**Post-mortem:** CAL-011 killed at DE step 28/200 (cost 7.23) — superseded
+by CAL-012 (D-027) before completion.
+
+---
+
+## D-027: Multi-Seed Calibration to Address Posterior Multimodality (CAL-012)
+
+**Date:** 2026-03-12
+**Decision:** Replace single-seed DE + single MCMC chain with multi-seed DE
+(5 seeds) + separate MCMC chains from each distinct mode, then combine
+posterior samples. This is "Option A" from Rounce et al. (2020), adapted.
+
+**Problem:**
+CAL-010 and CAL-011 used a single DE seed (42) to find one MAP estimate, then
+initialized all MCMC walkers tightly around it (0.1% spread). If the posterior
+has multiple modes — distinct parameter combinations that fit the data
+similarly well — this approach would:
+1. Only find whichever mode the DE seed happens to land in
+2. Never explore alternative modes during MCMC (walkers can't cross
+   low-probability valleys in 10,000 steps)
+3. Underestimate parameter uncertainty for projections
+
+The concern is real for DETIM: known trade-offs (MF vs r_snow, precip_corr
+vs precip_grad) create ridges in parameter space that could harbor distinct
+local optima.
+
+**Method:**
+1. **Phase 1 — Multi-seed DE:** Run DE with 5 seeds [42, 123, 456, 789, 2024].
+   Each seed initializes a different Latin hypercube population, exploring the
+   cost surface from different starting regions. ~50 min per seed.
+2. **Phase 1.5 — Clustering:** Normalize DE optima to [0,1] by parameter range,
+   compute pairwise Chebyshev distance, hierarchically cluster with 10% threshold.
+   Two optima within 10% of each parameter's range → same mode.
+3. **Phase 2 — Per-mode MCMC:** Run separate emcee chains (24 walkers × 10,000
+   steps) from each distinct mode. Each chain explores its local posterior.
+4. **Phase 3 — Combine:** Concatenate posterior samples from all chains with
+   equal weighting (conservative; BIC-weighting is an alternative if modes
+   have very different likelihoods).
+
+**Possible outcomes:**
+- **All 5 seeds → 1 mode:** Posterior is unimodal. Combined posterior ≈
+  single-chain posterior but with higher confidence. ~12 hrs total.
+- **2-3 modes:** Real multimodality. Combined posterior captures the full
+  uncertainty. Each mode gets documented with its physical interpretation.
+  ~20-28 hrs total.
+- **5 distinct modes:** Extreme equifinality. May indicate the model is
+  under-constrained. Would motivate tighter priors or additional constraints.
+  ~44 hrs total.
+
+**What stayed the same (vs CAL-011):**
+- Gap-filled climate (D-025), all 20 geodetic years
+- 6 free parameters, same bounds, priors, fixed params
+- DE config per seed (200 maxiter, 15 popsize)
+- MCMC config per chain (24 walkers, 10,000 steps)
+
+**Script:** `run_calibration_v12.py`
+**Output prefix:** v12

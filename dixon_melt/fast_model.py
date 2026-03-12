@@ -50,7 +50,7 @@ def run_simulation(
     # Temperature transfer coefficients
     transfer_alpha,  # 1D, length 12 (monthly slope)
     transfer_beta,   # 1D, length 12 (monthly intercept)
-    ref_elev,        # reference elevation for transfer (804m)
+    ref_elev,        # reference elevation for transfer (1078m, ELA site)
     # Scalar parameters
     MF,
     MF_grad,         # melt factor elevation gradient (mm d-1 K-1 per m)
@@ -127,7 +127,7 @@ def run_simulation(
         # Month for temperature transfer
         month_idx = _doy_to_month(doy)
 
-        # Statistical transfer: Nuka (375m) → on-glacier reference (804m)
+        # Statistical transfer: Nuka (375m) → on-glacier reference (1078m, ELA)
         alpha = transfer_alpha[month_idx]
         beta = transfer_beta[month_idx]
         T_ref = alpha * T_nuka_t + beta  # temperature at ref_elev on glacier

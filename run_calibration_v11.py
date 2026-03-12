@@ -1,18 +1,20 @@
 """
-Bayesian ensemble calibration of Dixon Glacier DETIM — v10 (D-017).
+Bayesian ensemble calibration of Dixon Glacier DETIM — v11 (D-026).
 
-Two-phase approach following Rounce et al. (2020):
-  Phase 1: Differential evolution → MAP estimate
-  Phase 2: emcee MCMC → posterior ensemble for projections
+Recalibration with multi-station gap-filled climate data (D-025).
 
-Key changes from CAL-009:
-  - Lapse rate fixed at -5.0 C/km (Gardner & Sharp 2009, Roth et al. 2023)
-  - r_ice = 2.0 × r_snow (Hock 1999 Table 4 mid-range)
-  - 6 free parameters (down from 8)
-  - Informative priors on MF and T0
-  - MCMC sampling for projection uncertainty
+Same framework as CAL-010 (D-017):
+  Phase 1: Differential evolution -> MAP estimate
+  Phase 2: emcee MCMC -> posterior ensemble for projections
 
-See research_log/decisions.md D-017 for full rationale.
+Changes from CAL-010:
+  - Climate input: gap-filled via 5-station cascade (D-025), zero NaN
+  - Coverage filter removed: all 20 geodetic years (WY2001-2020) now usable
+  - Previously poisoned years (WY2000, WY2001, WY2005, WY2020) now contribute
+    real information instead of noise
+  - Same 6 free parameters, bounds, priors, and fixed parameters
+
+See research_log/decisions.md D-026 for rationale.
 """
 import sys
 import os
@@ -28,7 +30,7 @@ import json
 import time
 import emcee
 
-# ── Paths ───────────────────────────────────────────────────────────
+# -- Paths ---------------------------------------------------------------
 PROJECT = Path('/home/kai/Documents/Opus46Dixon_FirstShot')
 DEM_PATH = PROJECT / 'ifsar_2010' / 'dixon_glacier_IFSAR_DTM_5m_full.tif'
 GLACIER_PATH = PROJECT / 'geodedic_mb' / 'dixon_glacier_outline_rgi7.geojson'
@@ -38,7 +40,7 @@ GEODETIC_PATH = PROJECT / 'geodedic_mb' / 'dixon_glacier_hugonnet.csv'
 OUTPUT_DIR = PROJECT / 'calibration_output'
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# ── DE Configuration ────────────────────────────────────────────────
+# -- DE Configuration ----------------------------------------------------
 GRID_RES = 100.0
 DE_MAXITER = 200
 DE_POPSIZE = 15
@@ -47,13 +49,13 @@ DE_TOL = 1e-4
 DE_MUTATION = (0.5, 1.0)
 DE_RECOMBINATION = 0.7
 
-# ── MCMC Configuration ─────────────────────────────────────────────
-MCMC_NWALKERS = 24       # 4× ndim (Foreman-Mackey et al. 2013 recommendation)
+# -- MCMC Configuration --------------------------------------------------
+MCMC_NWALKERS = 24       # 4x ndim (Foreman-Mackey et al. 2013 recommendation)
 MCMC_NSTEPS = 10000      # per walker (Rounce et al. 2020 precedent)
-MCMC_BURNIN = 2000       # minimum; will use max(2000, 2×autocorr_time)
+MCMC_BURNIN = 2000       # minimum; will use max(2000, 2x autocorr_time)
 MCMC_INIT_SPREAD = 1e-3  # relative spread for walker initialization
 
-# ── Fixed parameters (D-017) ───────────────────────────────────────
+# -- Fixed parameters (D-017) -------------------------------------------
 FIXED_LAPSE_RATE = -5.0e-3  # C/m (Gardner & Sharp 2009: -4.9, Roth 2023: -5.0)
 FIXED_RICE_RATIO = 2.0      # r_ice/r_snow (Hock 1999 Table 4 mid-range)
 FIXED_K_WIND = 0.0          # CAL-007 converged to ~0
@@ -61,7 +63,7 @@ FIXED_K_WIND = 0.0          # CAL-007 converged to ~0
 # Geodetic hard constraint penalty (D-014)
 GEODETIC_LAMBDA = 50.0
 
-# ── Parameters and bounds (6 free) ─────────────────────────────────
+# -- Parameters and bounds (6 free) -------------------------------------
 PARAM_NAMES = ['MF', 'MF_grad', 'r_snow', 'precip_grad', 'precip_corr', 'T0']
 PARAM_BOUNDS = [
     (1.0, 12.0),            # MF (mm d-1 K-1)
@@ -72,9 +74,9 @@ PARAM_BOUNDS = [
     (0.0, 3.0),             # T0 (C) (lowered: CAL-010a hit 0.5 lower bound)
 ]
 
-# ── Prior distributions (D-017) ─────────────────────────────────────
-# MF: Truncated Normal(5.0, 3.0) on [1, 12] — Braithwaite (2008)
-# T0: Truncated Normal(1.5, 0.5) on [0.5, 3.0] — standard range
+# -- Prior distributions (D-017) ----------------------------------------
+# MF: Truncated Normal(5.0, 3.0) on [1, 12] -- Braithwaite (2008)
+# T0: Truncated Normal(1.5, 0.5) on [0.0, 3.0] -- standard range
 # All others: Uniform within bounds
 
 def _truncnorm_logpdf(x, mu, sigma, lo, hi):
@@ -106,7 +108,7 @@ def log_prior(x):
     return lp
 
 
-# ── Data loading ───────────────────────────────────────────────────
+# -- Data loading --------------------------------------------------------
 def load_gap_filled_climate():
     """Load gap-filled climate CSV (D-025)."""
     df = pd.read_csv(CLIMATE_PATH, parse_dates=['date'], index_col='date')
@@ -114,7 +116,7 @@ def load_gap_filled_climate():
 
 
 def prepare_water_year_arrays(climate, wy_year):
-    """Extract numpy arrays for a water year from raw Nuka data."""
+    """Extract numpy arrays for a water year from gap-filled climate."""
     start = f'{wy_year - 1}-10-01'
     end = f'{wy_year}-09-30'
     wy = climate.loc[start:end]
@@ -122,8 +124,8 @@ def prepare_water_year_arrays(climate, wy_year):
         return None
     T = wy['temperature'].values.astype(np.float64)
     P = wy['precipitation'].values.astype(np.float64)
-    assert not np.any(np.isnan(T)), f"WY{wy_year} has NaN temperature — check gap-filled CSV"
-    assert not np.any(np.isnan(P)), f"WY{wy_year} has NaN precipitation — check gap-filled CSV"
+    assert not np.any(np.isnan(T)), f"WY{wy_year} has NaN temperature -- check gap-filled CSV"
+    assert not np.any(np.isnan(P)), f"WY{wy_year} has NaN precipitation -- check gap-filled CSV"
     doy = np.array([d.timetuple().tm_yday for d in wy.index], dtype=np.int64)
     return T, P, doy
 
@@ -140,7 +142,12 @@ def prepare_period_arrays(climate, start_date, end_date):
 
 
 def build_calibration_targets(stakes, geodetic, climate):
-    """Build calibration targets (same structure as v9)."""
+    """Build calibration targets.
+
+    Key change from v10: no coverage filter on geodetic years.
+    Gap-filled climate (D-025) guarantees zero NaN, so all 20 water years
+    (WY2001-2020) contribute to the geodetic constraint.
+    """
     targets = {
         'stake_annual': [],
         'stake_summer': [],
@@ -203,14 +210,10 @@ def build_calibration_targets(stakes, geodetic, climate):
             'unc': unc, 'arrays': period_arrays, 'estimated': is_estimated,
         })
 
+    # Geodetic years: all WY2001-2020 usable with gap-filled climate (D-025)
+    # No coverage filter needed -- gap-filled CSV guarantees zero NaN
     good_years = {}
     for wy_year in range(2001, 2021):
-        wy_data = climate.loc[f'{wy_year-1}-10-01':f'{wy_year}-09-30']
-        if len(wy_data) < 300:
-            continue
-        t_cov = wy_data['temperature'].notna().mean()
-        if t_cov < 0.85:
-            continue
         arrays = prepare_water_year_arrays(climate, wy_year)
         if arrays is not None:
             good_years[wy_year] = arrays
@@ -260,7 +263,7 @@ def compute_chi2_terms(x, fmodel, targets):
 
     all_chi2 = []
 
-    # ── Stake annual (Oct 1, SWE=0) ────────────────────────────────
+    # -- Stake annual (Oct 1, SWE=0) ------------------------------------
     annual_by_year = {}
     for tgt in targets['stake_annual']:
         yr = tgt['year']
@@ -276,7 +279,7 @@ def compute_chi2_terms(x, fmodel, targets):
             if not np.isnan(mod):
                 all_chi2.append(((mod - tgt['obs']) / tgt['unc']) ** 2)
 
-    # ── Stake summer (observed winter SWE) ─────────────────────────
+    # -- Stake summer (observed winter SWE) ------------------------------
     for tgt in targets['stake_summer']:
         T, P, doy = tgt['arrays']
         obs_swe = tgt.get('obs_winter_swe_mm')
@@ -286,7 +289,7 @@ def compute_chi2_terms(x, fmodel, targets):
         if not np.isnan(mod):
             all_chi2.append(((mod - tgt['obs']) / tgt['unc']) ** 2)
 
-    # ── Stake winter (Oct 1, SWE=0) ───────────────────────────────
+    # -- Stake winter (Oct 1, SWE=0) ------------------------------------
     winter_by_year = {}
     for tgt in targets['stake_winter']:
         yr = tgt['year']
@@ -302,7 +305,7 @@ def compute_chi2_terms(x, fmodel, targets):
             if not np.isnan(mod):
                 all_chi2.append(((mod - tgt['obs']) / tgt['unc']) ** 2)
 
-    # ── Geodetic MB (Oct 1, SWE=0) ────────────────────────────────
+    # -- Geodetic MB (Oct 1, SWE=0) -------------------------------------
     geodetic_penalty = 0.0
     for gtgt in targets['geodetic']:
         if not gtgt['year_data']:
@@ -323,7 +326,7 @@ def compute_chi2_terms(x, fmodel, targets):
 
 
 def compute_objective(x, fmodel, targets):
-    """Cost function for DE (same structure as v9 but with 6 params)."""
+    """Cost function for DE."""
     all_chi2, geodetic_penalty = compute_chi2_terms(x, fmodel, targets)
 
     if not all_chi2:
@@ -369,16 +372,16 @@ def log_probability(x, fmodel, targets):
     return lp + ll
 
 
-# ── Main ────────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------------
 def main():
     t_start = time.time()
     print("=" * 70)
-    print("DIXON GLACIER DETIM — CALIBRATION v10")
+    print("DIXON GLACIER DETIM -- CALIBRATION v11 (CAL-011)")
     print("Bayesian Ensemble: DE (MAP) + MCMC (posterior)")
-    print("D-017: Fixed lapse, r_ice=2×r_snow, 6 free params")
+    print("D-026: Recalibration with gap-filled climate (D-025)")
     print("=" * 70)
 
-    # ── Load data ───────────────────────────────────────────────────
+    # -- Load data -------------------------------------------------------
     print("\nLoading gap-filled climate data (D-025)...")
     climate = load_gap_filled_climate()
     print(f"  {len(climate)} days ({climate.index.min().date()} to {climate.index.max().date()})")
@@ -391,7 +394,7 @@ def main():
     geodetic = pd.read_csv(GEODETIC_PATH)
     print(f"  Geodetic: {len(geodetic)} periods")
 
-    # ── Prepare grid ────────────────────────────────────────────────
+    # -- Prepare grid ----------------------------------------------------
     print(f"\nPreparing grid ({GRID_RES}m)...")
     from dixon_melt.terrain import prepare_grid
     grid = prepare_grid(str(DEM_PATH), str(GLACIER_PATH), target_res=GRID_RES)
@@ -405,7 +408,7 @@ def main():
     ipot_table = precompute_ipot(grid, doy_range=range(1, 366), dt_hours=3.0)
     print(f"  Done in {time.time()-t0:.1f}s")
 
-    # ── Initialize FastDETIM ────────────────────────────────────────
+    # -- Initialize FastDETIM --------------------------------------------
     from dixon_melt.fast_model import FastDETIM
     from dixon_melt import config
 
@@ -419,10 +422,10 @@ def main():
         stake_tol=config.STAKE_TOL,
     )
 
-    # ── Build targets ───────────────────────────────────────────────
+    # -- Build targets ---------------------------------------------------
     targets = build_calibration_targets(stakes, geodetic, climate)
 
-    # ── JIT warm-up ─────────────────────────────────────────────────
+    # -- JIT warm-up -----------------------------------------------------
     print("\nJIT compilation warm-up...")
     t0 = time.time()
     test_x = np.array([5.0, -0.003, 0.3e-3, 0.001, 2.0, 1.5])
@@ -435,9 +438,9 @@ def main():
     t_per_eval = (time.time() - t0) / 5
     print(f"  {t_per_eval*1000:.0f} ms per objective evaluation")
 
-    # ══════════════════════════════════════════════════════════════════
+    # ====================================================================
     # PHASE 1: DIFFERENTIAL EVOLUTION (MAP ESTIMATE)
-    # ══════════════════════════════════════════════════════════════════
+    # ====================================================================
     n_de_evals = DE_POPSIZE * len(PARAM_NAMES) * (DE_MAXITER + 1)
     est_de_min = n_de_evals * t_per_eval / 60
 
@@ -486,7 +489,7 @@ def main():
     de_elapsed = time.time() - t_start
 
     print(f"\n{'=' * 70}")
-    print(f"PHASE 1 COMPLETE — MAP estimate")
+    print(f"PHASE 1 COMPLETE -- MAP estimate")
     print(f"{'=' * 70}")
     print(f"  Success: {de_result.success}")
     print(f"  Message: {de_result.message}")
@@ -503,16 +506,16 @@ def main():
     print(f"  Fixed: lapse_rate = {FIXED_LAPSE_RATE*1000:.1f} C/km")
 
     # Save DE outputs
-    with open(OUTPUT_DIR / 'best_params_v10.json', 'w') as f:
+    with open(OUTPUT_DIR / 'best_params_v11.json', 'w') as f:
         save_params = dict(map_params)
         save_params['r_ice'] = FIXED_RICE_RATIO * map_params['r_snow']
         save_params['lapse_rate'] = FIXED_LAPSE_RATE
         save_params['k_wind'] = FIXED_K_WIND
         json.dump(save_params, f, indent=2)
 
-    pd.DataFrame(de_log).to_csv(OUTPUT_DIR / 'calibration_log_v10_de.csv', index=False)
+    pd.DataFrame(de_log).to_csv(OUTPUT_DIR / 'calibration_log_v11_de.csv', index=False)
 
-    # ── Validation at MAP (same as v9) ──────────────────────────────
+    # -- Validation at MAP -----------------------------------------------
     run_params = _x_to_full_params(de_result.x)
 
     print(f"\n{'=' * 70}")
@@ -603,9 +606,9 @@ def main():
         print(f"    {period}: modeled={mean_bal:+.3f}, observed={row['dmdtda']:+.3f} "
               f"+/- {row['err_dmdtda']:.3f} ({len(bals)} years)")
 
-    # ══════════════════════════════════════════════════════════════════
+    # ====================================================================
     # PHASE 2: MCMC SAMPLING (POSTERIOR ENSEMBLE)
-    # ══════════════════════════════════════════════════════════════════
+    # ====================================================================
     mcmc_start = time.time()
     ndim = len(PARAM_NAMES)
     est_mcmc_evals = MCMC_NWALKERS * MCMC_NSTEPS
@@ -638,7 +641,7 @@ def main():
                 pos[i] = proposal
                 break
 
-    # Set up sampler (single-core — numba handles inner parallelism)
+    # Set up sampler (single-core -- numba handles inner parallelism)
     sampler = emcee.EnsembleSampler(
         MCMC_NWALKERS, ndim, log_probability,
         args=(fmodel, targets),
@@ -664,7 +667,7 @@ def main():
     print(f"\n  MCMC complete in {mcmc_elapsed:.0f}s ({mcmc_elapsed/3600:.1f} hours)")
     print(f"  Mean acceptance fraction: {np.mean(sampler.acceptance_fraction):.3f}")
 
-    # ── Convergence diagnostics ─────────────────────────────────────
+    # -- Convergence diagnostics -----------------------------------------
     print(f"\n  Convergence diagnostics:")
     try:
         tau = sampler.get_autocorr_time(quiet=True)
@@ -686,27 +689,27 @@ def main():
     print(f"    Burn-in: {burnin} steps")
     print(f"    Thinning: every {thin} steps")
 
-    # ── Extract posterior samples ───────────────────────────────────
+    # -- Extract posterior samples ----------------------------------------
     flat_samples = sampler.get_chain(discard=burnin, thin=thin, flat=True)
     n_samples = len(flat_samples)
     print(f"    Independent posterior samples: {n_samples}")
 
     # Save full chain
     chain = sampler.get_chain()  # shape: (nsteps, nwalkers, ndim)
-    np.save(OUTPUT_DIR / 'mcmc_chain_v10.npy', chain)
+    np.save(OUTPUT_DIR / 'mcmc_chain_v11.npy', chain)
 
     # Save log-probability chain
     log_prob = sampler.get_log_prob()
-    np.save(OUTPUT_DIR / 'mcmc_logprob_v10.npy', log_prob)
+    np.save(OUTPUT_DIR / 'mcmc_logprob_v11.npy', log_prob)
 
     # Save posterior samples as CSV
     posterior_df = pd.DataFrame(flat_samples, columns=PARAM_NAMES)
     # Add derived parameters
     posterior_df['r_ice'] = FIXED_RICE_RATIO * posterior_df['r_snow']
     posterior_df['lapse_rate'] = FIXED_LAPSE_RATE
-    posterior_df.to_csv(OUTPUT_DIR / 'posterior_samples_v10.csv', index=False)
+    posterior_df.to_csv(OUTPUT_DIR / 'posterior_samples_v11.csv', index=False)
 
-    # ── Posterior summary ───────────────────────────────────────────
+    # -- Posterior summary ------------------------------------------------
     print(f"\n{'=' * 70}")
     print("POSTERIOR SUMMARY")
     print(f"{'=' * 70}")
@@ -720,7 +723,7 @@ def main():
         else:
             print(f"  {name:15s} {q50:10.4f} {q16:10.4f} {q84:10.4f} {map_val:10.4f}")
 
-    # ── Corner plot ─────────────────────────────────────────────────
+    # -- Corner plot -----------------------------------------------------
     try:
         import corner
         labels = [
@@ -737,24 +740,23 @@ def main():
             show_titles=True, title_kwargs={"fontsize": 10},
             truths=de_result.x,
         )
-        fig.savefig(OUTPUT_DIR / 'corner_plot_v10.png', dpi=150, bbox_inches='tight')
-        print(f"\n  Corner plot saved to {OUTPUT_DIR / 'corner_plot_v10.png'}")
+        fig.savefig(OUTPUT_DIR / 'corner_plot_v11.png', dpi=150, bbox_inches='tight')
+        print(f"\n  Corner plot saved to {OUTPUT_DIR / 'corner_plot_v11.png'}")
     except Exception as e:
         print(f"\n  Corner plot failed: {e}")
 
-    # ── Save summary ────────────────────────────────────────────────
+    # -- Save summary ----------------------------------------------------
     total_elapsed = time.time() - t_start
     summary = {
-        'version': 10,
+        'version': 11,
+        'calibration_id': 'CAL-011',
         'method': 'DE (MAP) + emcee MCMC (posterior ensemble)',
-        'decision': 'D-017',
-        'fixes': [
-            'Lapse rate fixed at -5.0 C/km (Gardner & Sharp 2009)',
-            'r_ice = 2.0 x r_snow (Hock 1999 Table 4)',
-            'k_wind removed (D-015)',
-            '6 free parameters (reduced from 8)',
-            'Informative priors: MF~TN(5,3), T0~TN(1.5,0.5)',
-            'MCMC posterior sampling with emcee',
+        'decision': 'D-026',
+        'changes_from_v10': [
+            'Gap-filled climate input (D-025): 5-station cascade, zero NaN',
+            'Coverage filter removed: all 20 geodetic years now contribute',
+            'Previously poisoned years (WY2000, WY2001, WY2005, WY2020) fixed',
+            'Same 6 free params, bounds, priors, and fixed params as CAL-010',
         ],
         'de': {
             'success': bool(de_result.success),
@@ -782,17 +784,17 @@ def main():
         },
         'total_wall_time_s': total_elapsed,
     }
-    with open(OUTPUT_DIR / 'calibration_summary_v10.json', 'w') as f:
+    with open(OUTPUT_DIR / 'calibration_summary_v11.json', 'w') as f:
         json.dump(summary, f, indent=2, default=str)
 
     print(f"\n{'=' * 70}")
-    print(f"CALIBRATION v10 COMPLETE")
+    print(f"CALIBRATION v11 (CAL-011) COMPLETE")
     print(f"{'=' * 70}")
     print(f"  Total wall time: {total_elapsed:.0f}s ({total_elapsed/3600:.1f} hours)")
     print(f"  DE evaluations: {eval_count[0]}")
     print(f"  MCMC evaluations: {MCMC_NWALKERS * MCMC_NSTEPS}")
     print(f"  Posterior samples: {n_samples}")
-    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v10)")
+    print(f"\n  Outputs saved to {OUTPUT_DIR}/ (v11)")
     print("Done!")
 
 
