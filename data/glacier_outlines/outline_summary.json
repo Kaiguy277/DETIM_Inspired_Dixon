@@ -1,0 +1,56 @@
+[
+  {
+    "year": 2000,
+    "date": "2000-08-09",
+    "area_km2": 25.9614,
+    "platform": "landsat-7",
+    "cloud_cover": 2.0,
+    "n_pixels": 28846,
+    "pixel_size_m": 30.0
+  },
+  {
+    "year": 2005,
+    "date": "2005-09-25",
+    "area_km2": 21.9645,
+    "platform": "landsat-5",
+    "cloud_cover": 9.0,
+    "n_pixels": 24405,
+    "pixel_size_m": 30.0
+  },
+  {
+    "year": 2010,
+    "date": "2010-08-29",
+    "area_km2": 40.0545,
+    "platform": "landsat-5",
+    "cloud_cover": 22.0,
+    "n_pixels": 44505,
+    "pixel_size_m": 30.0
+  },
+  {
+    "year": 2015,
+    "date": "2015-08-20",
+    "area_km2": 29.2158,
+    "platform": "landsat-8",
+    "cloud_cover": 29.08,
+    "n_pixels": 32462,
+    "pixel_size_m": 30.0
+  },
+  {
+    "year": 2020,
+    "date": "2020-09-11",
+    "area_km2": 38.4021,
+    "platform": "Sentinel-2B",
+    "cloud_cover": 2.341069,
+    "n_pixels": 384021,
+    "pixel_size_m": 10.0
+  },
+  {
+    "year": 2025,
+    "date": "2025-09-30",
+    "area_km2": 35.2938,
+    "platform": "Sentinel-2C",
+    "cloud_cover": 3.243045,
+    "n_pixels": 352938,
+    "pixel_size_m": 10.0
+  }
+]

@@ -60,9 +60,9 @@ def load_nuka_historical(nuka_csv, period=(1991, 2020)):
         elif 'precipitation accumulation' in cl:
             col_map[c] = 'precip_accum'
             is_raw = True
-        elif 'tavg' in cl or cl == 'temperature':
+        elif cl in ('tavg', 'temperature'):
             col_map[c] = 'temperature'
-        elif 'prec' in cl or cl == 'precipitation':
+        elif cl in ('prec', 'precipitation'):
             col_map[c] = 'precipitation'
     df = df.rename(columns=col_map)
 

@@ -46,8 +46,8 @@ FARINOTTI_PATH = PROJECT / 'data' / 'ice_thickness' / 'RGI60-01.18059_thickness.
 OUTPUT_BASE = PROJECT / 'projection_output'
 
 
-CHAIN_PATH = PROJECT / 'calibration_output' / 'mcmc_chain_v10.npy'
-LOGPROB_PATH = PROJECT / 'calibration_output' / 'mcmc_logprob_v10.npy'
+CHAIN_PATH = PROJECT / 'calibration_output' / 'mcmc_chain_v12_mode1.npy'
+LOGPROB_PATH = PROJECT / 'calibration_output' / 'mcmc_logprob_v12_mode1.npy'
 POSTERIOR_NAMES_PATH = PROJECT / 'calibration_output' / 'posterior_param_names_v10.json'
 
 # Fixed parameters not in the posterior (held constant during calibration)

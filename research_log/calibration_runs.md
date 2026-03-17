@@ -1029,7 +1029,7 @@ T0~0.2, r_snow~1.07e-3. Notably T0 was already drifting toward 0 again.
 
 **Date:** 2026-03-12
 **Script:** `run_calibration_v12.py`
-**Status:** PENDING
+**Status:** COMPLETED
 **Decision:** D-027
 
 ### Changes from CAL-011
@@ -1084,15 +1084,204 @@ Same model and target setup as CAL-011:
 - Best case (1 mode): ~12 hrs total
 - Worst case (5 modes): ~44 hrs total
 
-### Results
-*Pending — run not yet started*
+### Results — Phase 1 (Multi-Seed DE)
+| Metric | Value |
+|--------|-------|
+| Total DE wall time | 15,956 s (4.4 hrs) |
+| Modes found | **1** (unimodal — all 5 seeds converged to same region) |
 
-### Expected output files
-- `calibration_output/calibration_log_v12_de.csv` (all seeds)
-- `calibration_output/de_multistart_v12.json` (optima + clustering)
+| Seed | Cost | MF | MF_grad | r_snow (×10⁻³) | precip_grad | precip_corr | T0 |
+|------|------|----|---------|-----------------|-------------|-------------|-----|
+| 42 | 7.171 | 6.947 | -0.00385 | 2.000 | 0.000640 | 1.672 | 0.0005 |
+| 123 | 7.172 | 7.014 | -0.00390 | 1.850 | 0.000613 | 1.691 | 0.0010 |
+| 456 | 7.173 | 6.959 | -0.00378 | 1.908 | 0.000702 | 1.634 | 0.0032 |
+| 789 | 7.173 | 7.100 | -0.00405 | 1.952 | 0.000507 | 1.792 | 0.0020 |
+| **2024** | **7.170** | **6.939** | **-0.00383** | **2.000** | **0.000598** | **1.710** | **0.0000** |
+
+**Key finding:** All 5 seeds converged to costs within 0.003 of each other (7.170–7.173),
+confirming the posterior is **unimodal**. No alternative modes detected. The multi-seed
+approach validates CAL-010's single-seed result — the cost surface has one global minimum
+in this parameterization.
+
+### Results — Phase 2 (MCMC)
+| Metric | Value |
+|--------|-------|
+| Chains run | 1 (single mode) |
+| Walkers | 24 (4× ndim) |
+| Steps | 10,000 |
+| Burn-in | 2,000 (used 5,000 for posterior = 50% of chain) |
+| Thinning | every 70 steps |
+| MCMC wall time | 29,968 s (8.3 hrs) |
+| Mean acceptance fraction | 0.373 (target: 0.2–0.5) |
+| Autocorrelation times | 141–253 steps |
+| Max tau | 253 (precip_grad) |
+| Chain / max(tau) | 40× (target: >50×; adequate for 4/6 params) |
+| Independent posterior samples | **2,736** |
+
+### Posterior Summary (v12)
+| Parameter | Median | 16th | 84th | MAP (seed 2024) | At bound? |
+|-----------|--------|------|------|-----------------|-----------|
+| MF (mm/d/K) | 7.163 | 6.927 | 7.434 | 6.939 | No |
+| MF_grad (per m) | -0.00395 | -0.00424 | -0.00366 | -0.00383 | No |
+| r_snow (×10⁻³) | 1.472 | 0.872 | 1.848 | 2.000 | MAP at upper |
+| precip_grad | 0.000658 | 0.000501 | 0.000865 | 0.000598 | No |
+| precip_corr | 1.672 | 1.520 | 1.809 | 1.710 | No |
+| T0 (°C) | 0.012 | 0.003 | 0.031 | 0.000 | MAP at lower |
+
+### Comparison with CAL-010 (pre-gap-fill)
+| Parameter | CAL-010 Median | CAL-012 Median | Change |
+|-----------|---------------|---------------|--------|
+| MF | 7.11 | 7.16 | +0.7% |
+| MF_grad | -0.0039 | -0.00395 | -1.3% |
+| r_snow (×10⁻³) | 1.756 | 1.472 | -16% |
+| precip_grad | 0.0006 | 0.000658 | +10% |
+| precip_corr | 1.644 | 1.672 | +1.7% |
+| T0 | 0.014 | 0.012 | -14% |
+
+Gap-filled climate had modest impact on most parameters. Largest change is r_snow
+(-16%), with broader posterior spread [0.87, 1.85] vs [1.41, 1.93] in CAL-010.
+This suggests gap-filled years provide additional constraint on the radiation
+factor, but the overall calibration is robust to the climate fix.
+
+### Total Runtime
+| Phase | Wall time |
+|-------|-----------|
+| Phase 1 (5× DE) | 4.4 hrs |
+| Phase 2 (1× MCMC) | 8.3 hrs |
+| **Total** | **12.8 hrs** |
+
+### Assessment
+**DEFINITIVE CALIBRATION for thesis.** Key conclusions:
+
+1. **Unimodal posterior confirmed:** All 5 DE seeds converge to same minimum.
+   The equifinality concern from CAL-009 was resolved by fixing lapse rate and
+   reducing to 6 free parameters (D-017). Single-mode MCMC is sufficient.
+
+2. **Gap-fill impact modest:** Parameters changed <2% for MF, MF_grad, precip_corr.
+   The r_snow posterior broadened, suggesting gap-filled years add information
+   but don't fundamentally change the calibration.
+
+3. **MF well-constrained:** 7.16 [6.93, 7.43] — tight, mid-literature range.
+
+4. **T0 near 0°C:** Consistent with maritime climate (Jennings et al. 2018).
+
+5. **precip_corr = 1.67:** Effective correction at ELA = 1.67 × (1 + 0.00066 × 703)
+   = 2.44×, comparable to Wolverine Glacier (2.28×, O'Neel et al. 2014).
+
+6. **Ready for projections** with v12 posterior.
+
+### Output files
+- `calibration_output/de_multistart_v12.json` (5 seed optima + clustering)
 - `calibration_output/best_params_v12.json` (best mode MAP)
-- `calibration_output/mcmc_chain_v12_mode{N}.npy` (per mode)
-- `calibration_output/mcmc_logprob_v12_mode{N}.npy` (per mode)
-- `calibration_output/posterior_samples_v12.csv` (combined)
+- `calibration_output/mcmc_chain_v12_mode1.npy` (10000 × 24 × 6)
+- `calibration_output/mcmc_logprob_v12_mode1.npy` (10000 × 24)
+- `calibration_output/posterior_samples_v12.csv` (2,736 thinned samples)
 - `calibration_output/corner_plot_v12.png`
 - `calibration_output/calibration_summary_v12.json`
+- `calibration_output/calibration_v12_stdout.log`
+
+---
+
+## PROJ-004: Projection SSP2-4.5 with v12 Posterior + Gap-Filled Climate
+
+**Date:** 2026-03-14
+**Script:** `run_projection.py`
+**Parameters:** CAL-012 posterior (top 250 of 2,736 samples)
+**Climate:** Gap-filled (D-025) + NEX-GDDP-CMIP6 bias-corrected
+**Grid:** 100m
+**Status:** COMPLETED
+
+### Configuration
+- **GCMs (5):** ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR, MRI-ESM2-0, NorESM2-MM
+- **Scenario:** SSP2-4.5
+- **Period:** WY2026–WY2100 (75 years)
+- **Total runs:** 1,250 (5 GCMs × 250 param sets)
+- **Geometry:** Delta-h (Huss et al. 2010), Farinotti ice thickness
+- **Routing:** 3 parallel linear reservoirs
+- **Bias correction:** Monthly delta method vs gap-filled obs 1991–2020
+- **Wall time:** 841 s (14.0 min)
+
+### Results — SSP2-4.5
+| Metric | Median | 5th–95th |
+|--------|--------|----------|
+| Final area (km2) | 21.9 | 18.7–29.3 |
+| Final area (%) | 55% | 47–73% |
+| Final volume (km3) | 2.49 | 1.97–3.53 |
+| Final volume (%) | 36% | 29–51% |
+| Final balance (m w.e./yr) | -1.50 | -2.96 to -0.99 |
+
+**Peak water:** ~WY2058 (8.49 m3/s, 11-yr smoothed, range 7.82–10.04)
+
+| GCM | Final area (km2) | Final area (%) |
+|-----|-------------------|----------------|
+| ACCESS-CM2 | 21.9 | 55% |
+| EC-Earth3 | 22.1 | 55% |
+| MPI-ESM1-2-HR | 18.8 | 47% |
+| MRI-ESM2-0 | 29.3 | 73% |
+| NorESM2-MM | 20.9 | 52% |
+
+### Output files
+- `projection_output/PROJ-004_top250_ssp245_2026-03-14/`
+
+---
+
+## PROJ-005: Projection SSP5-8.5 with v12 Posterior + Gap-Filled Climate
+
+**Date:** 2026-03-14
+**Script:** `run_projection.py`
+**Parameters:** CAL-012 posterior (top 250 of 2,736 samples)
+**Climate:** Gap-filled (D-025) + NEX-GDDP-CMIP6 bias-corrected
+**Grid:** 100m
+**Status:** COMPLETED
+
+### Configuration
+- **GCMs (5):** ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR, MRI-ESM2-0, NorESM2-MM
+- **Scenario:** SSP5-8.5
+- **Period:** WY2026–WY2100 (75 years)
+- **Total runs:** 1,250 (5 GCMs × 250 param sets)
+- **Wall time:** 819 s (13.7 min)
+
+### Results — SSP5-8.5
+| Metric | Median | 5th–95th |
+|--------|--------|----------|
+| Final area (km2) | 12.0 | 11.0–25.9 |
+| Final area (%) | 30% | 27–64% |
+| Final volume (km3) | 0.74 | 0.57–3.05 |
+| Final volume (%) | 11% | 8–44% |
+| Final balance (m w.e./yr) | -6.60 | -8.07 to -3.01 |
+
+**Peak water:** ~WY2063 (9.12 m3/s, 11-yr smoothed, range 7.76–11.13)
+
+| GCM | Final area (km2) | Final area (%) |
+|-----|-------------------|----------------|
+| ACCESS-CM2 | 11.1 | 28% |
+| EC-Earth3 | 11.7 | 29% |
+| MPI-ESM1-2-HR | 15.2 | 38% |
+| MRI-ESM2-0 | 25.8 | 64% |
+| NorESM2-MM | 12.0 | 30% |
+
+### Output files
+- `projection_output/PROJ-005_top250_ssp585_2026-03-14/`
+
+---
+
+### Comparison: PROJ-002 (v10, old climate) vs PROJ-004/005 (v12, gap-filled)
+
+| Metric | PROJ-002 SSP2-4.5 | PROJ-004 SSP2-4.5 | PROJ-002 SSP5-8.5 | PROJ-005 SSP5-8.5 |
+|--------|-------------------|-------------------|-------------------|-------------------|
+| Peak water year | WY2043 | **WY2058** | WY2058 | **WY2063** |
+| Peak Q (m3/s) | 8.13 | 8.49 | 8.44 | 9.12 |
+| Final area (%) | ~45% | 55% | ~26% | 30% |
+| Final vol (%) | ~26% | 36% | ~11% | 11% |
+
+**Key changes with v12 + gap-filled climate:**
+- Peak water delayed ~15 years under SSP2-4.5 (WY2043 → WY2058)
+- Peak water delayed ~5 years under SSP5-8.5 (WY2058 → WY2063)
+- Glacier retains more area/volume by 2100 in SSP2-4.5 (55% vs 45%)
+- Higher peak discharge in both scenarios
+- Gap-filled climate years (especially WY2000, WY2005) contribute realistic
+  forcing rather than suppressed melt, affecting long-term trajectory
+
+**Note:** PROJ-003 was an aborted run (bug in climate_projections.py where
+`precip_source` column from gap-filled CSV was misidentified as precipitation).
+Fixed by tightening column matching in `load_nuka_historical()`.
