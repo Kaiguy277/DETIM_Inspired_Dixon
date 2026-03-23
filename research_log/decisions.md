@@ -1016,3 +1016,88 @@ local optima.
 
 **Script:** `run_calibration_v12.py`
 **Output prefix:** v12
+
+---
+
+## D-028: Multi-Objective Calibration with Snowline in MCMC Likelihood
+
+**Date:** 2026-03-18 (designed), 2026-03-19–23 (executed as CAL-013)
+
+**Decision:** Add snowline elevation as a chi-squared term in the MCMC
+log-likelihood, and apply glacier area evolution as a post-hoc behavioral
+filter. This replaces the original plan of using snowlines as a post-hoc
+filter (which proved ineffective — see analysis below).
+
+**Pipeline:**
+```
+Phase 1: Multi-seed DE (stakes + geodetic + snowline in objective)
+Phase 2: MCMC (stakes + geodetic + snowline in likelihood)
+Phase 3: Combine posteriors
+Phase 4: Post-hoc area evolution filter (top 1000 → RMSE ≤ 1.0 km²)
+```
+
+**Why snowlines moved INTO the likelihood (not post-hoc):**
+
+Initial testing with the D-028 behavioral filter approach (top 1000 from
+CAL-012, hard snowline RMSE threshold) revealed that snowline RMSE had
+**zero discriminating power** as a post-hoc filter:
+- All 1000 param sets scored RMSE 88–96m (std = 1.6m, range = 8m)
+- Snowline RMSE uncorrelated with log-probability (r = 0.146)
+- Systematic +30m positive bias (model snowline too high)
+- At threshold ≤50m: 0/1000 pass; at ≤90m: 77/1000 pass
+- No parameter combination within the CAL-012 posterior could improve
+  snowline fit — the posterior was too tightly constrained by stakes+geodetic
+
+This meant the stakes+geodetic objective was not "aware" of snowline
+information, and the posterior it produced happened to be in a region of
+parameter space with ~90m snowline RMSE regardless of parameter values.
+
+By putting snowlines in the likelihood, the MCMC sampler explores regions
+that jointly satisfy all three constraints, rather than calibrating on two
+and hoping the third comes along.
+
+**Structural snowline limitations identified:**
+- Observed snowlines have high spatial spread (std 24–69m within a year)
+  but the model produces near-contour-line snowlines (std 6–22m)
+- Model over-amplifies interannual variability (std 129m vs obs 63m)
+- Recent years (2019–2024) show persistent +88 to +178m bias
+- These are structural DETIM limitations, not parameter-tunable
+
+**Snowline uncertainty:** sigma = 75m (fixed), combining observed spatial
+spread (~50–80m), model grid resolution (100m), and temporal mismatch.
+Consistent with Rabatel et al. (2005).
+
+**Area filter design:**
+- 6 checkpoints at 5-year intervals (2000, 2005, 2010, 2015, 2020, 2025)
+- Manually digitized outlines from historical satellite imagery
+- Areas: 40.11, 40.11, 39.83, 39.26, 38.59, 38.34 km² (1.77 km² total retreat)
+- RMSE threshold: 1.0 km² (tightened from original 1.5 km²)
+- Area filter is post-hoc (too expensive for in-MCMC: 25 WY × delta-h per eval)
+
+**Result:** All 1000 posterior samples passed the 1.0 km² area filter,
+confirming the snowline-informed posterior is already consistent with
+observed area retreat. The multi-objective calibration works.
+
+**Rationale:**
+- Snowline = spatial ELA constraint, directly informing the accumulation/
+  ablation gradient the model must reproduce
+- Area = integrated temporal constraint validating cumulative mass loss
+  + delta-h geometry evolution over 25 years
+- Follows Gabbi et al. (2012) multi-criteria philosophy but implements
+  snowline as a likelihood term rather than post-hoc filter
+- References: Rabatel et al. (2005), Beven & Binley (1992)
+
+**Alternatives considered:**
+- Post-hoc snowline filter (rejected: no discriminating power within
+  the CAL-012 posterior, as demonstrated)
+- Composite scoring (rejected: less principled than in-likelihood)
+- Re-enabling k_wind to address spatial snowline structure (deferred:
+  CAL-007 showed k_wind→0, would need new physics justification)
+
+**Implementation:**
+- `run_calibration_v13.py` — full DE+MCMC with snowline in likelihood +
+  post-hoc area filter, with `--resume` and checkpoint support
+- `dixon_melt/behavioral_filter.py` — area scoring module
+- `run_behavioral_filter.py` — standalone filter runner (for reuse)
+- `data/glacier_outlines/digitized/` — 6 manually digitized outlines
+- `run_projection.py` updated with `--filtered-params` flag

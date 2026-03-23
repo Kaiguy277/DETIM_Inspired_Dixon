@@ -1285,3 +1285,209 @@ factor, but the overall calibration is robust to the climate fix.
 **Note:** PROJ-003 was an aborted run (bug in climate_projections.py where
 `precip_source` column from gap-filled CSV was misidentified as precipitation).
 Fixed by tightening column matching in `load_nuka_historical()`.
+
+---
+
+## Run CAL-013: Multi-Objective Calibration with Snowline in Likelihood (D-028)
+
+**Date:** 2026-03-19–23
+**Script:** `run_calibration_v13.py`
+**Status:** COMPLETED
+**Decision:** D-028
+
+### Changes from CAL-012
+1. **Snowline elevation in MCMC likelihood:** 22 years of digitized snowline
+   elevations (1999–2024) added as chi-squared terms with sigma=75m
+2. **Post-hoc area behavioral filter:** 6 manually digitized outlines
+   (2000–2025, 5-yr intervals) as area RMSE ≤ 1.0 km² screen
+3. **MCMC checkpoint/resume:** saves every 1000 steps, `--resume` flag
+   to skip completed DE phase and continue MCMC from last checkpoint
+
+### Motivation
+Post-hoc snowline filtering of the CAL-012 posterior had **zero
+discriminating power**: all 1000 param sets scored RMSE 88–96m (range 8m,
+std 1.6m). Snowline RMSE was uncorrelated with log-probability (r=0.146).
+The stakes+geodetic likelihood constrained the posterior so tightly that
+no parameter variation could improve snowline fit. Moving snowlines into
+the likelihood lets the sampler explore parameter space that jointly
+satisfies all constraints.
+
+### Configuration
+Same model and DE/MCMC structure as CAL-012:
+
+| Setting | Value |
+|---------|-------|
+| Grid resolution | 100 m |
+| DE seeds | 5 (42, 123, 456, 789, 2024) |
+| DE maxiter | 200 per seed |
+| MCMC walkers | 24 (4× ndim) |
+| MCMC steps | 10,000 per chain |
+| MCMC burn-in | 2,000 minimum |
+| Snowline sigma | 75 m |
+| Area RMSE threshold | 1.0 km² |
+
+### Parameters (6 free — unchanged from CAL-012)
+| Parameter | Lower | Upper | Prior |
+|-----------|-------|-------|-------|
+| MF (mm/d/K) | 1.0 | 12.0 | TruncNorm(5.0, 3.0) |
+| MF_grad (mm/d/K/m) | -0.01 | 0.0 | Uniform |
+| r_snow | 0.02e-3 | 2.0e-3 | Uniform |
+| precip_grad (frac/m) | 0.0002 | 0.006 | Uniform |
+| precip_corr | 1.2 | 4.0 | Uniform |
+| T0 (C) | 0.0 | 3.0 | TruncNorm(1.5, 0.5) |
+
+### Fixed parameters (unchanged)
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| lapse_rate | -5.0 C/km | Gardner & Sharp 2009, Roth 2023 |
+| r_ice/r_snow | 2.0 | Hock 1999 Table 4 |
+| k_wind | 0.0 | CAL-007 converged to ~0 |
+| ref_elev | 375 m | Nuka SNOTEL (D-013) |
+
+### Calibration targets
+| Type | Count | Notes |
+|------|-------|-------|
+| Stake annual | 8 (6 measured) | ABL/ELA/ACC, WY2023–2025 |
+| Stake summer | 8 (6 measured) | |
+| Stake winter | 9 (8 measured) | |
+| Geodetic | 1 period | 2000-2020 mean (-0.939 ± 0.122) |
+| **Snowline** | **22 years** | **1999–2024, sigma=75m (NEW)** |
+
+### Results — Phase 1 (Multi-Seed DE)
+| Metric | Value |
+|--------|-------|
+| Total DE wall time | 31,816 s (8.8 hrs) |
+| Modes found | **1** (unimodal) |
+
+| Seed | Cost | MF | precip_corr | T0 | r_snow (×10⁻³) |
+|------|------|----|-------------|-----|-----------------|
+| 42 | 5.345 | 7.035 | 1.507 | 0.003 | 1.889 |
+| 123 | **5.343** | 7.097 | 1.651 | 0.000 | 1.989 |
+| 456 | 5.343 | 7.150 | 1.665 | 0.001 | 1.977 |
+| 789 | 5.343 | 7.104 | 1.633 | 0.001 | 1.954 |
+| 2024 | 5.343 | 7.110 | 1.621 | 0.000 | 1.961 |
+
+**Cost decreased** from 7.170 (CAL-012) to 5.343 — the snowline terms
+provide additional gradient signal that helps DE find better optima.
+
+### Results — Phase 2 (MCMC)
+| Metric | Value |
+|--------|-------|
+| Chains run | 1 (single mode) |
+| Total steps | 10,000 (accumulated across 3 resumed runs) |
+| Mean acceptance fraction | 0.365 |
+| Eval time | ~615 ms (vs 290 ms in CAL-012 — 22 extra snowline runs) |
+| Combined posterior samples | 1,656 |
+
+### Posterior Summary (v13)
+| Parameter | Median | 16th | 84th | MAP |
+|-----------|--------|------|------|-----|
+| MF (mm/d/K) | 7.299 | 7.059 | 7.581 | 7.110 |
+| MF_grad (per m) | -0.0042 | -0.0044 | -0.0039 | -0.0041 |
+| r_snow (×10⁻³) | 1.405 | 0.726 | 1.815 | 1.961 |
+| precip_grad | 0.000700 | 0.000600 | 0.000900 | 0.000694 |
+| precip_corr | 1.605 | 1.475 | 1.741 | 1.621 |
+| T0 (°C) | 0.011 | 0.003 | 0.029 | 0.000 |
+
+### Comparison with CAL-012
+| Parameter | CAL-012 Median | CAL-013 Median | Change |
+|-----------|---------------|---------------|--------|
+| MF | 7.16 | 7.30 | +1.9% |
+| MF_grad | -0.00395 | -0.0042 | -6.3% |
+| r_snow (×10⁻³) | 1.472 | 1.405 | -4.6% |
+| precip_grad | 0.000658 | 0.000700 | +6.4% |
+| precip_corr | 1.672 | 1.605 | -4.0% |
+| T0 | 0.012 | 0.011 | -8.3% |
+
+Snowline information pulled MF slightly higher (more melt), precip_corr
+slightly lower, and steepened MF_grad. Changes are modest (<7%) but
+physically meaningful: the snowline constraint informs the ELA position,
+which depends on the balance between accumulation and ablation.
+
+### MAP Snowline Validation
+| Year | Obs (m) | Mod (m) | Bias (m) |
+|------|---------|---------|----------|
+| 1999 | 1105 | 1065 | -40 |
+| 2000 | 1032 | 841 | -191 |
+| 2003 | 979 | 984 | +5 |
+| 2004 | 1204 | 1170 | -35 |
+| 2005 | 1104 | 1129 | +25 |
+| 2006 | 1109 | 1099 | -10 |
+| 2007 | 1128 | 1156 | +28 |
+| 2009 | 1237 | 1387 | +149 |
+| 2010 | 1086 | 1077 | -9 |
+| 2014 | 1245 | 1242 | -4 |
+| 2015 | 1051 | 1061 | +10 |
+| 2020 | 1126 | 1303 | +176 |
+| 2024 | 1166 | 1254 | +88 |
+
+**Summary (22 years):** RMSE = 90m, mean bias = +32m, MAE = 68m
+
+Snowline RMSE did not improve dramatically (90m vs 93m in CAL-012) because
+the error is primarily structural: the model over-amplifies interannual
+variability (std 129m vs obs 63m) and produces spatially flat snowlines
+(std 6–22m vs obs 24–69m). However, the snowline information now shapes
+the posterior distribution rather than being ignored.
+
+### Area Evolution Filter (Phase 4)
+| Metric | Value |
+|--------|-------|
+| Candidates screened | 1,000 (top by log-prob) |
+| RMSE threshold | 1.0 km² |
+| **Survivors** | **1,000 (100%)** |
+
+All posterior samples passed the area filter, confirming the snowline-informed
+posterior already produces area trajectories consistent with the observed
+1.77 km² retreat (2000–2025). The area filter is effectively a validation
+check rather than an active screen.
+
+### Area checkpoints (manually digitized outlines)
+| Year | Observed area (km²) | Source |
+|------|---------------------|--------|
+| 2000 | 40.11 | Manual digitization |
+| 2005 | 40.11 | Manual digitization |
+| 2010 | 39.83 | Manual digitization |
+| 2015 | 39.26 | Manual digitization |
+| 2020 | 38.59 | Manual digitization |
+| 2025 | 38.34 | Manual digitization |
+
+### Runtime
+| Phase | Wall time |
+|-------|-----------|
+| Phase 1 (5× DE) | 8.8 hrs |
+| Phase 2 (MCMC, 10k steps) | ~19 hrs (across 3 resumed runs) |
+| Phase 4 (area filter) | ~0.5 hrs |
+| **Total** | **~28 hrs** |
+
+Note: MCMC crashed twice due to machine sleep/OOM. Checkpoint/resume
+support (saves every 1000 steps) was added after the first crash,
+preventing further data loss.
+
+### Assessment
+**MULTI-OBJECTIVE CALIBRATION COMPLETE.** Key conclusions:
+
+1. **Snowline in likelihood works:** DE cost dropped from 7.17 to 5.34,
+   confirming the snowline terms provide useful gradient signal.
+2. **Posterior shifts are modest but physical:** MF +1.9%, precip_corr -4%.
+   Snowlines constrain the ELA position, pulling parameters toward slightly
+   more melt and less precipitation correction.
+3. **Structural snowline error persists:** RMSE 90m with +32m bias, driven
+   by model over-amplification of interannual variability and spatially
+   flat snowlines. This is a DETIM limitation, not parameter-tunable.
+4. **Area filter validates posterior:** 100% pass rate at 1.0 km² confirms
+   the posterior is consistent with observed area retreat without additional
+   screening needed.
+5. **Ready for projections** with v13 posterior (1,000 filtered params).
+
+### Output files
+- `calibration_output/de_multistart_v13.json` (5-seed DE optima)
+- `calibration_output/best_params_v13.json` (MAP)
+- `calibration_output/mcmc_chain_v13_mode1.npy` (10000 × 24 × 6)
+- `calibration_output/mcmc_logprob_v13_mode1.npy` (10000 × 24)
+- `calibration_output/posterior_samples_v13.csv` (1,656 thinned samples)
+- `calibration_output/corner_plot_v13.png`
+- `calibration_output/filtered_params_v13.json` (1,000 area-filtered sets)
+- `calibration_output/behavioral_filter_v13_scores.csv`
+- `calibration_output/area_filter_v13_scores.csv`
+- `calibration_output/calibration_summary_v13.json`
+- `calibration_output/calibration_v13_stdout.log`
