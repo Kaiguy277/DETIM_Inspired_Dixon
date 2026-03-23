@@ -1,0 +1,274 @@
+======================================================================
+DIXON GLACIER DETIM -- CALIBRATION v13 (CAL-013)
+Multi-objective: stakes + geodetic + snowline elevation
+D-028: Snowline in likelihood, area as post-hoc filter
+*** RESUME MODE: skipping DE, loading saved optima ***
+======================================================================
+
+Loading gap-filled climate data (D-025)...
+  9862 days (1998-10-01 to 2025-09-30)
+  Stakes: 25 observations
+  Geodetic: 3 periods
+
+Preparing grid (100.0m)...
+  Shape: (289, 117), Glacier cells: 4011, Area: 40.1 km2
+
+Precomputing potential direct radiation (365 DOYs)...
+  Precomputing I_pot: DOY 1/365...
+  Precomputing I_pot: DOY 30/365...
+  Precomputing I_pot: DOY 60/365...
+  Precomputing I_pot: DOY 90/365...
+  Precomputing I_pot: DOY 120/365...
+  Precomputing I_pot: DOY 150/365...
+  Precomputing I_pot: DOY 180/365...
+  Precomputing I_pot: DOY 210/365...
+  Precomputing I_pot: DOY 240/365...
+  Precomputing I_pot: DOY 270/365...
+  Precomputing I_pot: DOY 300/365...
+  Precomputing I_pot: DOY 330/365...
+  Precomputing I_pot: DOY 360/365...
+  Done in 2.9s
+    2010-01-01_2020-01-01: SKIPPED (validation only, D-016)
+    2000-01-01_2010-01-01: SKIPPED (validation only, D-016)
+
+  Building snowline targets...
+
+Calibration targets:
+  Stake annual: 8 (6 measured)
+  Stake summer: 8 (6 measured)
+  Stake winter: 9 (8 measured)
+  Geodetic periods: 1
+    2000-01-01_2020-01-01: 20 usable years
+  Snowline years: 22
+    1999 (1999-09-08): obs=1105m +/- 57m
+    2000 (2000-08-09): obs=1032m +/- 57m
+    2003 (2003-08-02): obs=979m +/- 24m
+    2004 (2004-08-29): obs=1204m +/- 50m
+    2005 (2005-09-08): obs=1104m +/- 40m
+    2006 (2006-09-19): obs=1109m +/- 43m
+    2007 (2007-09-06): obs=1128m +/- 67m
+    2009 (2009-09-19): obs=1237m +/- 23m
+    2010 (2010-09-15): obs=1086m +/- 63m
+    2011 (2011-09-18): obs=1061m +/- 35m
+    2012 (2012-10-06): obs=1073m +/- 40m
+    2013 (2013-09-15): obs=1151m +/- 56m
+    2014 (2014-09-25): obs=1245m +/- 32m
+    2015 (2015-08-27): obs=1051m +/- 50m
+    2016 (2016-08-29): obs=1069m +/- 55m
+    2017 (2017-09-30): obs=1153m +/- 58m
+    2018 (2018-10-05): obs=1165m +/- 46m
+    2019 (2019-09-17): obs=1155m +/- 63m
+    2020 (2020-10-06): obs=1126m +/- 35m
+    2021 (2021-09-19): obs=1088m +/- 41m
+    2023 (2023-09-29): obs=1124m +/- 49m
+    2024 (2024-09-20): obs=1166m +/- 69m
+
+JIT compilation warm-up...
+  Done in 4.9s
+  1041 ms per objective evaluation (includes 22 snowline years)
+
+======================================================================
+PHASE 1: SKIPPED (loading saved DE results)
+======================================================================
+  Loaded 1 mode(s), best cost=5.3430
+    MF             : 7.110251
+    MF_grad        : -0.004108
+    r_snow         : 0.001961
+    precip_grad    : 0.000694
+    precip_corr    : 1.620601
+    T0             : 0.000254
+
+======================================================================
+PHASE 2: MCMC SAMPLING (1 chain(s))
+======================================================================
+  Chains to run: 1
+  Per chain: 24 walkers x 10000 steps = 240000 evals
+  Per chain estimated: 69.4 hours
+  Total estimated: 69.4 hours
+
+
+──────────────────────────────────────────────────
+  MCMC chain 1/1 (mode cost=5.3430)
+──────────────────────────────────────────────────
+    Resuming from checkpoint: 3000 steps done, 7000 remaining
+    Running MCMC chain 1 (7000 steps)...
+      step  3500/10000 | accept=0.369 | elapsed=57.6min | ETA=12.5hrs
+      step  4000/10000 | accept=0.372 | elapsed=108.1min | ETA=10.8hrs
+      [checkpoint saved: 4000 steps total]
+      step  4500/10000 | accept=0.374 | elapsed=155.4min | ETA=9.5hrs
+      step  5000/10000 | accept=0.377 | elapsed=201.7min | ETA=8.4hrs
+      [checkpoint saved: 5000 steps total]
+      step  5500/10000 | accept=0.377 | elapsed=247.4min | ETA=7.4hrs
+      step  6000/10000 | accept=0.376 | elapsed=294.1min | ETA=6.5hrs
+      [checkpoint saved: 6000 steps total]
+      step  6500/10000 | accept=0.376 | elapsed=341.4min | ETA=5.7hrs
+      step  7000/10000 | accept=0.375 | elapsed=389.4min | ETA=4.9hrs
+      [checkpoint saved: 7000 steps total]
+      step  7500/10000 | accept=0.372 | elapsed=435.4min | ETA=4.0hrs
+      step  8000/10000 | accept=0.371 | elapsed=482.1min | ETA=3.2hrs
+      [checkpoint saved: 8000 steps total]
+      step  8500/10000 | accept=0.372 | elapsed=528.7min | ETA=2.4hrs
+      step  9000/10000 | accept=0.371 | elapsed=575.6min | ETA=1.6hrs
+      [checkpoint saved: 9000 steps total]
+      step  9500/10000 | accept=0.370 | elapsed=623.3min | ETA=0.8hrs
+      step 10000/10000 | accept=0.368 | elapsed=669.3min | ETA=0.0hrs
+      [checkpoint saved: 10000 steps total]
+
+    Chain 1 complete: 10000 total steps in 40156s (11.2 hrs this run)
+    Acceptance fraction: 0.368
+The chain is shorter than 50 times the integrated autocorrelation time for 1 parameter(s). Use this estimate with caution and run a longer chain!
+N/50 = 200;
+tau: [235.12608396]
+    Autocorr times: 235
+    Max tau: 235, chain/tau: 43x
+    Burn-in: 2000, thin: 117, posterior samples: 1656
+
+======================================================================
+PHASE 3: COMBINING POSTERIORS
+======================================================================
+  Chains: 1
+    Mode 1: 1656 samples
+  Combined: 1656 samples
+
+======================================================================
+POSTERIOR SUMMARY (combined)
+======================================================================
+  Parameter           Median       16th       84th   Best MAP
+  -------------------------------------------------------
+  MF                  7.2987     7.0585     7.5810     7.1103
+  MF_grad            -0.0042    -0.0044    -0.0039    -0.0041
+  r_snow               1.405      0.726      1.815      1.961  (x10^-3)
+  precip_grad         0.0007     0.0006     0.0009     0.0007
+  precip_corr         1.6054     1.4746     1.7407     1.6206
+  T0                  0.0109     0.0026     0.0290     0.0003
+
+  Corner plot saved to /home/kai/Documents/Opus46Dixon_FirstShot/calibration_output/corner_plot_v13.png
+
+======================================================================
+MAP SNOWLINE VALIDATION
+======================================================================
+  1999: obs=1105m, mod=1065m, bias=-40m
+  2000: obs=1032m, mod=841m, bias=-191m
+  2003: obs=979m, mod=984m, bias=+5m
+  2004: obs=1204m, mod=1170m, bias=-35m
+  2005: obs=1104m, mod=1129m, bias=+25m
+  2006: obs=1109m, mod=1099m, bias=-10m
+  2007: obs=1128m, mod=1156m, bias=+28m
+  2009: obs=1237m, mod=1387m, bias=+149m
+  2010: obs=1086m, mod=1077m, bias=-9m
+  2011: obs=1061m, mod=1087m, bias=+26m
+  2012: obs=1073m, mod=1025m, bias=-48m
+  2013: obs=1151m, mod=1278m, bias=+126m
+  2014: obs=1245m, mod=1242m, bias=-4m
+  2015: obs=1051m, mod=1061m, bias=+10m
+  2016: obs=1069m, mod=1008m, bias=-61m
+  2017: obs=1153m, mod=1177m, bias=+23m
+  2018: obs=1165m, mod=1221m, bias=+55m
+  2019: obs=1155m, mod=1283m, bias=+128m
+  2020: obs=1126m, mod=1303m, bias=+176m
+  2021: obs=1088m, mod=1226m, bias=+138m
+  2023: obs=1124m, mod=1236m, bias=+112m
+  2024: obs=1166m, mod=1254m, bias=+88m
+
+  Snowline summary (22 years):
+    Mean bias: +32 m
+    RMSE:      90 m
+    MAE:       68 m
+
+======================================================================
+MAP STAKE VALIDATION (best mode)
+======================================================================
+
+  WY2023:
+    Glacier-wide balance: -1.484 m w.e.
+      ABL annual: mod=-4.18, obs=-4.50, res=+0.32
+      ELA annual: mod=-1.35, obs=+0.10, res=-1.45
+      ACC annual: mod=+0.39, obs=+0.37, res=+0.02
+      ABL winter: mod=+0.91, obs=+0.85, res=+0.06
+      ACC winter: mod=+1.85, obs=+2.45, res=-0.60
+      ELA winter: mod=+1.45, obs=+2.36, res=-0.91
+      ABL summer: mod=-4.97, obs=-5.35, res=+0.38
+      ACC summer: mod=-1.45, obs=-2.25, res=+0.80
+      ELA summer: mod=-2.73, obs=-2.26, res=-0.47
+
+  WY2024:
+    Glacier-wide balance: -1.635 m w.e.
+      ABL annual: mod=-4.30, obs=-2.63, res=-1.67
+      ELA annual: mod=-1.46, obs=+0.10, res=-1.56
+      ACC annual: mod=+0.19, obs=+1.46, res=-1.27
+      ABL winter: mod=+0.75, obs=+1.93, res=-1.18
+      ACC winter: mod=+1.82, obs=+3.01, res=-1.19
+      ELA winter: mod=+1.41, obs=+2.60, res=-1.19
+      ABL summer: mod=-4.66, obs=-4.56, res=-0.10
+      ACC summer: mod=-1.62, obs=-1.55, res=-0.07
+      ELA summer: mod=-2.70, obs=-2.50, res=-0.20
+
+  WY2025:
+    Glacier-wide balance: -0.107 m w.e.
+      ABL annual: mod=-3.98, obs=  n/a, res=  n/a
+      ELA annual: mod=+0.13, obs=+1.08, res=-0.95
+      ACC annual: mod=+2.55, obs=+1.88, res=+0.68
+      ABL winter: mod=+1.82, obs=+1.60, res=+0.22
+      ACC winter: mod=+4.67, obs=+3.53, res=+1.14
+      ELA winter: mod=+3.60, obs=+3.04, res=+0.56
+      ACC summer: mod=-2.12, obs=-1.66, res=-0.46
+      ELA summer: mod=-3.47, obs=-1.96, res=-1.51
+
+  Geodetic MB (calibration target):
+    2000-01-01_2020-01-01: modeled=-0.817, observed=-0.939 +/- 0.122 (20 years)
+
+  Geodetic sub-periods (validation only):
+    2010-01-01_2020-01-01: modeled=-1.340, observed=-0.806 +/- 0.202 (10 years)
+    2000-01-01_2010-01-01: modeled=-0.294, observed=-1.072 +/- 0.225 (10 years)
+
+======================================================================
+PHASE 4: AREA EVOLUTION BEHAVIORAL FILTER
+======================================================================
+  Area checkpoints: [2000, 2005, 2010, 2015, 2020, 2025]
+    2000: 40.11 km²
+    2005: 40.11 km²
+    2010: 39.83 km²
+    2015: 39.26 km²
+    2020: 38.59 km²
+    2025: 38.34 km²
+  Ice thickness: farinotti
+
+  Selected top 1000 param sets for area screening
+  Area RMSE threshold: 1.0 km²
+    [   1/1000] area RMSE= 0.38 km² → PASS  (0.9/s, ETA 19min)
+    [ 100/1000] area RMSE= 0.38 km² → PASS  (5.3/s, ETA 3min)
+    [ 200/1000] area RMSE= 0.38 km² → PASS  (5.4/s, ETA 2min)
+    [ 300/1000] area RMSE= 0.38 km² → PASS  (5.5/s, ETA 2min)
+    [ 400/1000] area RMSE= 0.39 km² → PASS  (5.5/s, ETA 2min)
+    [ 500/1000] area RMSE= 0.38 km² → PASS  (5.5/s, ETA 2min)
+    [ 600/1000] area RMSE= 0.38 km² → PASS  (5.5/s, ETA 1min)
+    [ 700/1000] area RMSE= 0.38 km² → PASS  (5.5/s, ETA 1min)
+    [ 800/1000] area RMSE= 0.38 km² → PASS  (5.5/s, ETA 1min)
+    [ 900/1000] area RMSE= 0.38 km² → PASS  (5.5/s, ETA 0min)
+    [1000/1000] area RMSE= 0.38 km² → PASS  (5.5/s, ETA 0min)
+
+  Area filter: 1000/1000 passed (100.0%) in 3.0 min
+  Filtered params saved: filtered_params_v13.json (1000 sets)
+
+  Survivor parameter summary:
+    MF          : median=7.1444  [7.0300, 7.2592]
+    MF_grad     : median=-0.0041  [-0.0042, -0.0039]
+    r_snow      : median=0.0017  [0.0015, 0.0019]
+    precip_grad : median=0.0007  [0.0006, 0.0008]
+    precip_corr : median=1.6147  [1.5673, 1.6764]
+    T0          : median=0.0032  [0.0009, 0.0062]
+
+======================================================================
+CALIBRATION v13 (CAL-013) COMPLETE
+======================================================================
+  Total wall time: 40354s (11.2 hours)
+  DE seeds: 5, modes found: 1
+  MCMC chains: 1, combined samples: 1656
+  Snowline years in likelihood: 22
+  Area filter: 1000 → 1000 survivors
+
+  Outputs saved to /home/kai/Documents/Opus46Dixon_FirstShot/calibration_output/ (v13)
+
+  To project with filtered params:
+    python run_projection.py --filtered-params calibration_output/filtered_params_v13.json
+Done!

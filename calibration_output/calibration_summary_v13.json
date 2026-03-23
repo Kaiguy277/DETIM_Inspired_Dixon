@@ -1,0 +1,166 @@
+{
+  "version": 13,
+  "calibration_id": "CAL-013",
+  "method": "Multi-objective DE+MCMC (stakes+geodetic+snowline) + area filter",
+  "decision": "D-028",
+  "changes_from_v12": [
+    "Snowline elevation chi2 added to MCMC likelihood (sigma=75m)",
+    "Post-MCMC area evolution behavioral filter",
+    "Manually digitized outlines (2000-2025, 5-yr intervals)"
+  ],
+  "snowline_config": {
+    "sigma_m": 75.0,
+    "n_years": 22
+  },
+  "area_filter_config": {
+    "n_candidates": 1000,
+    "n_survivors": 1000,
+    "rmse_threshold_km2": 1.0,
+    "checkpoints": {
+      "2000": 40.11,
+      "2005": 40.11,
+      "2010": 39.83,
+      "2015": 39.26,
+      "2020": 38.59,
+      "2025": 38.34
+    }
+  },
+  "de": {
+    "n_seeds": 5,
+    "seeds": [
+      42,
+      123,
+      456,
+      789,
+      2024
+    ],
+    "optima": [
+      {
+        "seed": 42,
+        "cost": 5.345294434355691,
+        "params": {
+          "MF": 7.035271791625919,
+          "MF_grad": -0.0039452575934894405,
+          "r_snow": 0.0018893218107950585,
+          "precip_grad": 0.0008569377860165974,
+          "precip_corr": 1.5067765690420023,
+          "T0": 0.0033566222706073157
+        }
+      },
+      {
+        "seed": 123,
+        "cost": 5.3430345303217175,
+        "params": {
+          "MF": 7.097227821807031,
+          "MF_grad": -0.004095911624498101,
+          "r_snow": 0.0019890047132847294,
+          "precip_grad": 0.0006570327298955694,
+          "precip_corr": 1.6512973138264175,
+          "T0": 0.000182608538407692
+        }
+      },
+      {
+        "seed": 456,
+        "cost": 5.3433577187906725,
+        "params": {
+          "MF": 7.149578125689629,
+          "MF_grad": -0.0041549717732222175,
+          "r_snow": 0.0019770637752101333,
+          "precip_grad": 0.000645101714048141,
+          "precip_corr": 1.6649213504155438,
+          "T0": 0.0005794353964247689
+        }
+      },
+      {
+        "seed": 789,
+        "cost": 5.3433340095180855,
+        "params": {
+          "MF": 7.1040162686441235,
+          "MF_grad": -0.004082469981532846,
+          "r_snow": 0.0019540093938020964,
+          "precip_grad": 0.0006818949055466574,
+          "precip_corr": 1.6334229771347042,
+          "T0": 0.0014566274951186564
+        }
+      },
+      {
+        "seed": 2024,
+        "cost": 5.342950030196662,
+        "params": {
+          "MF": 7.110250661324855,
+          "MF_grad": -0.004108163325366921,
+          "r_snow": 0.0019611432584915886,
+          "precip_grad": 0.0006938809577956957,
+          "precip_corr": 1.6206014366371804,
+          "T0": 0.00025392904020029596
+        }
+      }
+    ],
+    "n_modes": 1,
+    "modes": [
+      {
+        "mode_id": 1,
+        "cost": 5.342950030196662,
+        "seeds": [
+          42,
+          123,
+          456,
+          789,
+          2024
+        ],
+        "params": {
+          "MF": 7.110250661324855,
+          "MF_grad": -0.004108163325366921,
+          "r_snow": 0.0019611432584915886,
+          "precip_grad": 0.0006938809577956957,
+          "precip_corr": 1.6206014366371804,
+          "T0": 0.00025392904020029596
+        }
+      }
+    ],
+    "cluster_threshold": 0.1,
+    "de_wall_time_s": 31815.82820534706
+  },
+  "mcmc_chains": [
+    {
+      "mode_id": 1,
+      "mode_cost": 5.342950030196662,
+      "mode_seeds": [
+        42,
+        123,
+        456,
+        789,
+        2024
+      ],
+      "mode_params": {
+        "MF": 7.110250661324855,
+        "MF_grad": -0.004108163325366921,
+        "r_snow": 0.0019611432584915886,
+        "precip_grad": 0.0006938809577956957,
+        "precip_corr": 1.6206014366371804,
+        "T0": 0.00025392904020029596
+      },
+      "n_walkers": 24,
+      "n_steps": 10000,
+      "burn_in": 2000,
+      "thin": 117,
+      "n_samples": 1656,
+      "acceptance_fraction": 0.3678988095238096,
+      "autocorr_times": [
+        235.12608395655178
+      ],
+      "wall_time_s": 40155.51468658447
+    }
+  ],
+  "combined_posterior": {
+    "n_total_samples": 1656,
+    "n_modes": 1
+  },
+  "fixed_params": {
+    "lapse_rate": -0.005,
+    "r_ice_ratio": 2.0,
+    "k_wind": 0.0,
+    "ref_elev": 375.0
+  },
+  "total_wall_time_s": 40353.92534446716
+}

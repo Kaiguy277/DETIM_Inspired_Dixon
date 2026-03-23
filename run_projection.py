@@ -127,6 +127,36 @@ def load_params(path):
     return params
 
 
+def load_filtered_params(path):
+    """Load behaviorally-filtered parameter sets from JSON.
+
+    These are produced by run_behavioral_filter.py and contain only
+    parameter sets that passed both snowline and area filters.
+
+    Parameters
+    ----------
+    path : str or Path, path to filtered_params.json
+
+    Returns
+    -------
+    list of dicts, each a complete param set for FastDETIM.run()
+    """
+    with open(path) as f:
+        data = json.load(f)
+
+    param_sets = data['param_sets']
+    config = data.get('filter_config', {})
+
+    print(f"  Loaded {len(param_sets)} behaviorally-filtered parameter sets")
+    if config:
+        print(f"    Filter: {config.get('n_candidates', '?')} candidates → "
+              f"{len(param_sets)} survivors")
+        print(f"    Snowline RMSE ≤ {config.get('snowline_rmse_threshold_m', '?')} m, "
+              f"Area RMSE ≤ {config.get('area_rmse_threshold_km2', '?')} km²")
+
+    return param_sets
+
+
 def load_top_param_sets(n_top=N_TOP, chain_path=None, logprob_path=None,
                         names_path=None):
     """Select the top-performing parameter sets from the MCMC chain.
@@ -389,7 +419,7 @@ def aggregate_ensemble(all_runs, years):
 
 def run_projection(params_path=None, scenario='ssp245', end_year=2100,
                    grid_res=100.0, gcms=None, n_samples=None,
-                   output_dir=None):
+                   output_dir=None, filtered_params_path=None):
     """Run full ensemble projection for one SSP scenario.
 
     Propagates both climate uncertainty (multi-GCM) and parameter uncertainty
@@ -414,6 +444,9 @@ def run_projection(params_path=None, scenario='ssp245', end_year=2100,
         (following Geck 2020). Ignored when params_path is a JSON.
     output_dir : Path or None
         Directory for output files. If None, auto-creates a PROJ-### folder.
+    filtered_params_path : str or None
+        Path to behaviorally-filtered params JSON from run_behavioral_filter.py.
+        If provided, overrides params_path and n_samples.
 
     Returns
     -------
@@ -431,7 +464,10 @@ def run_projection(params_path=None, scenario='ssp245', end_year=2100,
     scenario_label = SCENARIOS.get(scenario, scenario)
 
     # ── Load parameters ───────────────────────────────────────────────
-    if params_path is not None and params_path.endswith('.json'):
+    if filtered_params_path is not None:
+        param_sets = load_filtered_params(filtered_params_path)
+        param_source = f"behavioral filter: {len(param_sets)} survivors"
+    elif params_path is not None and params_path.endswith('.json'):
         param_sets = [load_params(params_path)]
         param_source = f"single: {params_path}"
     else:
@@ -650,12 +686,18 @@ def run_projection(params_path=None, scenario='ssp245', end_year=2100,
 
 
 def run_all_scenarios(params_path=None, end_year=2100, grid_res=100.0,
-                      gcms=None, n_samples=None, label=None):
+                      gcms=None, n_samples=None, label=None,
+                      filtered_params_path=None):
     """Run projections for all three SSP scenarios."""
     from dixon_melt.climate_projections import SCENARIOS
 
     # Determine n_params for folder naming
-    if params_path is not None and params_path.endswith('.json'):
+    if filtered_params_path is not None:
+        with open(filtered_params_path) as f:
+            n_p = len(json.load(f)['param_sets'])
+        if label is None:
+            label = f'filtered{n_p}'
+    elif params_path is not None and params_path.endswith('.json'):
         n_p = 1
     else:
         n_p = n_samples or N_TOP
@@ -668,7 +710,7 @@ def run_all_scenarios(params_path=None, end_year=2100, grid_res=100.0,
     for scenario in SCENARIOS:
         result = run_projection(
             params_path, scenario, end_year, grid_res, gcms, n_samples,
-            output_dir=run_dir)
+            output_dir=run_dir, filtered_params_path=filtered_params_path)
         if result is not None:
             all_projections[scenario] = result
 
@@ -711,11 +753,17 @@ if __name__ == '__main__':
     parser.add_argument('--grid-res', type=float, default=100.0)
     parser.add_argument('--label', default=None,
                         help='Custom label for the run folder name')
+    parser.add_argument('--filtered-params', default=None,
+                        help='Path to behaviorally-filtered params JSON '
+                             '(from run_behavioral_filter.py). Overrides '
+                             '--params and --n-samples.')
     args = parser.parse_args()
 
     if args.scenario is None or args.scenario == 'all':
         run_all_scenarios(args.params, args.end_year, args.grid_res,
-                          args.gcms, args.n_samples, args.label)
+                          args.gcms, args.n_samples, args.label,
+                          args.filtered_params)
     else:
         run_projection(args.params, args.scenario, args.end_year,
-                       args.grid_res, args.gcms, args.n_samples)
+                       args.grid_res, args.gcms, args.n_samples,
+                       filtered_params_path=args.filtered_params)

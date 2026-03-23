@@ -1,0 +1,8 @@
+[
+  {"year": 2000, "area_km2": 40.11, "source": "manual_digitization"},
+  {"year": 2005, "area_km2": 40.11, "source": "manual_digitization"},
+  {"year": 2010, "area_km2": 39.83, "source": "manual_digitization"},
+  {"year": 2015, "area_km2": 39.26, "source": "manual_digitization"},
+  {"year": 2020, "area_km2": 38.59, "source": "manual_digitization"},
+  {"year": 2025, "area_km2": 38.34, "source": "manual_digitization"}
+]
