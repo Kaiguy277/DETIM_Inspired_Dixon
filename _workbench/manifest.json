@@ -1,0 +1,48 @@
+{
+  "project_root": "/home/kai/Documents/Opus46Dixon_FirstShot",
+  "project_name": "Dixon Glacier DETIM (Distributed Enhanced Temperature Index Model)",
+  "description": "MS Thesis, Alaska Pacific University. Melt model for Dixon Glacier, Kenai Peninsula, Alaska.",
+  "generated": "2026-04-07",
+  "files_analyzed": {
+    "source": 17,
+    "data_input": 22,
+    "data_output": 45,
+    "documentation": 8,
+    "runner_scripts": 15
+  },
+  "entry_points": [
+    "run_calibration_v13.py",
+    "run_projection.py",
+    "run_snowline_validation.py",
+    "run_behavioral_filter.py",
+    "animate_glacier_retreat.py",
+    "plot_projection_ensemble.py",
+    "rank_and_select_v13.py"
+  ],
+  "conventions": {
+    "decision_log_format": "Numbered D-001 through D-028 in research_log/decisions.md",
+    "calibration_registry": "CAL-001 through CAL-013 in research_log/calibration_runs.md",
+    "data_layout": "data/ for inputs, calibration_output/ for calibration, projection_output/PROJ-###/ for projections",
+    "config_approach": "dixon_melt/config.py with DEFAULT_PARAMS dict + physical constants"
+  },
+  "module_package": "dixon_melt/",
+  "modules": [
+    {"path": "dixon_melt/config.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/melt.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/temperature.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/precipitation.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/solar.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/terrain.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/snowpack.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/massbalance.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/fast_model.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/model.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/calibration.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/climate.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/snowline_validation.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/behavioral_filter.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/glacier_dynamics.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/climate_projections.py", "role": "source", "language": "python"},
+    {"path": "dixon_melt/routing.py", "role": "source", "language": "python"}
+  ]
+}

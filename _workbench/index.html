@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dixon Glacier DETIM -- Model Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+:root{--bg:#0f1117;--bg2:#161822;--bg3:#1e2030;--bg4:#252840;--text:#e8e8e8;--text2:#a0a4b8;--text3:#6e7291;--accent:#6c8cff;--accent2:#5eead4;--accent3:#f59e0b;--red:#ef4444;--green:#22c55e;--blue:#3b82f6;--border:#2a2d42;--radius:8px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.6}
+code,pre,.mono{font-family:'Fira Code',monospace;font-feature-settings:"calt" 0}
+a{color:var(--accent);text-decoration:none;cursor:pointer}a:hover{text-decoration:underline}
+nav{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;height:48px;gap:8px}
+nav .logo{font-weight:700;font-size:15px;color:var(--accent2);margin-right:24px;white-space:nowrap}
+nav .tab{padding:8px 16px;cursor:pointer;color:var(--text2);font-size:13px;font-weight:500;border-bottom:2px solid transparent;transition:all .15s;user-select:none}
+nav .tab:hover{color:var(--text)}nav .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+main{max-width:1400px;margin:0 auto;padding:24px;transition:margin-right .25s}
+main.panel-open{margin-right:540px}
+/* When panel is open, make body and main into an isolated scroll container so scroll doesn't leak between main and panel */
+body.panel-open{overflow:hidden}
+body.panel-open main{position:fixed;top:48px;left:0;right:520px;bottom:0;overflow-y:auto;overscroll-behavior:contain;padding:24px;max-width:none}
+body.panel-open main .view.active{max-width:1400px;margin:0 auto}
+.view{display:none}.view.active{display:block}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card h3{font-size:16px;font-weight:600;color:var(--accent2);margin-bottom:8px}
+.card h4{font-size:14px;font-weight:600;color:var(--text);margin:12px 0 6px}.card p{color:var(--text2);margin-bottom:8px}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge-high{background:#16a34a22;color:#22c55e;border:1px solid #22c55e44}
+.badge-med{background:#eab30822;color:#f59e0b;border:1px solid #f59e0b44}
+.badge-low{background:#ef444422;color:#ef4444;border:1px solid #ef444444}
+.badge-primary{background:#3b82f622;color:#6c8cff;border:1px solid #6c8cff44}
+.badge-supporting{background:#22c55e22;color:#22c55e;border:1px solid #22c55e44}
+.badge-context{background:#6e729122;color:#a0a4b8;border:1px solid #a0a4b844}
+.badge-param{background:#6c8cff22;color:#6c8cff;border:1px solid #6c8cff44}
+.badge-decision{background:#5eead422;color:#5eead4;border:1px solid #5eead444}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;color:var(--accent2);font-weight:600;border-bottom:2px solid var(--border);background:var(--bg3)}
+td{padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text2)}tr:hover td{background:var(--bg3)}
+.table-scroll{max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:6px}
+details{margin:8px 0}details summary{cursor:pointer;color:var(--accent);font-weight:500;font-size:13px;padding:4px 0}
+pre.code-block{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px 16px;overflow-x:auto;font-size:12px;line-height:1.5;color:var(--text2);margin:8px 0}
+.file-ref{font-size:11px;color:var(--text3)}
+.eq-box{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:16px;margin:8px 0;text-align:center;font-size:18px}
+.worked-example{background:#1a1d2e;border-left:3px solid var(--accent3);padding:12px 16px;margin:8px 0;border-radius:0 6px 6px 0}
+.worked-example .wlabel{color:var(--accent3);font-weight:600;font-size:12px;text-transform:uppercase;margin-bottom:4px}
+#search-input{width:100%;padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:15px;outline:none}
+#search-input:focus{border-color:var(--accent)}
+.search-hit{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:4px}
+.search-hit:hover{background:var(--bg3)}.search-hit .hit-type{font-size:11px;font-weight:600;text-transform:uppercase}
+.arch-container{font-family:'Fira Code',monospace;font-feature-settings:"calt" 0;font-size:12px;line-height:1.4;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:20px;overflow-x:auto}
+.arch-row{white-space:pre}
+.arch-click{color:var(--accent);cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
+.arch-click:hover{color:var(--accent2);text-decoration-style:solid;background:var(--bg3)}
+.detail-panel{position:fixed;top:48px;right:0;width:520px;height:calc(100vh - 48px);background:var(--bg2);border-left:1px solid var(--border);overflow-y:auto;overscroll-behavior:contain;padding:24px;z-index:90;transform:translateX(100%);transition:transform .25s ease}
+.detail-panel.open{transform:translateX(0)}
+.detail-panel .close-btn{position:sticky;top:0;float:right;cursor:pointer;color:var(--text3);font-size:22px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:var(--bg3);z-index:1}
+.detail-panel .close-btn:hover{color:var(--text);background:var(--bg4)}
+.detail-panel h2{font-size:18px;color:var(--accent2);margin-bottom:4px}
+.detail-panel h3{font-size:14px;color:var(--accent);margin:16px 0 6px}
+.detail-panel p{color:var(--text2);font-size:13px;margin-bottom:8px}
+.dp-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);cursor:pointer}
+.dp-tag:hover{border-color:var(--accent)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
+.stat{text-align:center;padding:16px}.stat .num{font-size:28px;font-weight:700;color:var(--accent2)}.stat .label{font-size:12px;color:var(--text3);margin-top:4px}
+.filter-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-btn{padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500;border:1px solid var(--border);background:var(--bg3);color:var(--text2);user-select:none}
+.filter-btn:hover{border-color:var(--accent)}.filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.plotly-chart{width:100%;height:320px;margin:12px 0}.plotly-chart-tall{width:100%;height:450px;margin:12px 0}
+</style>
+</head>
+<body>
+<nav>
+<span class="logo">Dixon Glacier DETIM</span>
+<div class="tab active" data-view="architecture">Architecture</div>
+<div class="tab" data-view="data">Data</div>
+<div class="tab" data-view="decisions">Decisions</div>
+<div class="tab" data-view="equations">Equations</div>
+<div class="tab" data-view="search">Search</div>
+</nav>
+<main id="main-content">
+<div id="architecture" class="view active"></div>
+<div id="data" class="view"></div>
+<div id="decisions" class="view"></div>
+<div id="equations" class="view"></div>
+<div id="search" class="view"></div>
+</main>
+<div class="detail-panel" id="detail-panel">
+<div class="close-btn" id="close-detail"></div>
+<div id="detail-content"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -13,6 +13,16 @@ __pycache__/
 # Calibration logs (large, regenerable)
 calibration_output/calibration_log*.csv
 
+# MCMC chain arrays (large binary, regenerable)
+calibration_output/mcmc_chain_*.npy
+calibration_output/mcmc_logprob_*.npy
+
+# Old calibration stdout logs (superseded)
+calibration_output/calibration_v[2-8]_stdout.log
+
+# Animation outputs (large MP4/GIF)
+projection_output/PROJ-*_animation-*
+
 # CMIP6 temp files and auth tokens
 data/cmip6/tmp/
 data/cmip6/gdrive_token.json
