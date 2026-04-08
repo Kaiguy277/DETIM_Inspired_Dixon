@@ -1,0 +1,4 @@
+period,type,obs_dmdtda,obs_err,mod_median,mod_p5,mod_p95,bias,within_uncertainty,n_years,n_param_sets
+2010-2020,validation,-0.8059,0.2017,-1.2871,-1.2951,-1.2770,-0.4812,False,10,200
+2000-2020,calibration,-0.9390,0.1216,-0.7654,-0.7723,-0.7564,0.1736,False,20,200
+2000-2010,validation,-1.0721,0.2248,-0.2437,-0.2517,-0.2337,0.8284,False,10,200

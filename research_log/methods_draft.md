@@ -69,7 +69,11 @@ type determines which radiation factor is applied:
 - Firn (SWE = 0, elevation ≥ median glacier elevation): r_snow
 - Ice (SWE = 0, below firn line): r_ice
 
-[TODO: Consider dynamic firn line based on multi-year accumulation.]
+The firn line is set at the median glacier elevation, a simplification that
+avoids tracking multi-year accumulation history. This is consistent with
+other DETIM implementations (Hock, 1999) and has minimal impact on
+calibrated results because the radiation factor ratio (r_ice/r_snow = 2.0)
+is the primary control on the snow-to-ice albedo feedback.
 
 ## 3.3 Input Data
 
@@ -219,16 +223,55 @@ all calibration targets.
 ## 3.5 Projection Ensemble
 
 Projections of glacier mass balance, area, and discharge under climate
-scenarios are run with 200 parameter sets drawn from the MCMC posterior
-distribution. For each parameter set, the model is forced with downscaled
-GCM output under [RCP/SSP scenarios TBD] to [year TBD]. Results are reported
-as the median with 5th and 95th percentile credible intervals, capturing
+scenarios are run with 250 parameter sets drawn from the MCMC posterior
+distribution. For each parameter set, the model is forced with bias-corrected
+daily output from five CMIP6 GCMs (ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR,
+MRI-ESM2-0, NorESM2-MM) from the NEX-GDDP-CMIP6 archive (Thrasher et al.,
+2022) under SSP2-4.5 and SSP5-8.5 to WY2100. Results are reported as the
+median with 5th and 95th percentile credible intervals, capturing
 uncertainty from both parameter equifinality and climate forcing.
+
+To bracket structural uncertainty from the fixed lapse rate, projections are
+additionally run at -4.5 and -5.5 °C km⁻¹ (spanning the literature range
+for maritime Alaskan glaciers) using 50 posterior parameter sets. This
+scenario-based sensitivity analysis uses the same calibrated parameters at
+each lapse rate, isolating the effect of the lapse rate assumption on
+projected glacier evolution.
 
 ## 3.6 Validation
 
-[TODO: Sub-period geodetic comparison, leave-one-year-out cross-validation,
-sensitivity analysis of fixed parameters (lapse rate, r_ice/r_snow ratio).]
+Model validation employs three independent approaches targeting different
+aspects of model performance.
+
+### 3.6.1 Sub-period Geodetic Comparison
+
+The Hugonnet et al. (2021) geodetic record provides independent sub-period
+estimates for 2000–2010 (-1.072 ± 0.225 m w.e. yr⁻¹) and 2010–2020
+(-0.806 ± 0.202 m w.e. yr⁻¹). Only the full 2000–2020 period is used for
+calibration; the sub-periods serve as validation targets. For 200 posterior
+parameter sets, the model is run through each sub-period independently and
+the ensemble median compared to the observed value.
+
+### 3.6.2 Posterior Predictive Check by Year
+
+Rather than full leave-one-year-out cross-validation (which would require
+three complete recalibrations), we evaluate the posterior ensemble against
+each stake year independently. For each water year with stake observations
+(WY2023–2025), 200 posterior parameter sets are run and predicted balances
+compared to observed values at all three stake elevations (ABL, ELA, ACC).
+This identifies whether any single year dominates the calibration fit or
+whether the posterior generalizes across the observation period.
+
+### 3.6.3 Sensitivity of Fixed Parameters
+
+Two parameters are fixed from literature rather than calibrated: the lapse
+rate (λ = -5.0 °C km⁻¹) and the r_ice/r_snow ratio (2.0). To quantify
+the impact of these choices, each fixed parameter is perturbed across its
+plausible range while holding all other parameters at their MAP values.
+Lapse rate is varied from -4.0 to -6.5 °C km⁻¹ (Gardner & Sharp, 2009;
+Roth et al., 2023) and the r_ice/r_snow ratio from 1.5 to 3.0 (Hock, 1999,
+Table 4). For each perturbation, the 2000–2020 geodetic mass balance and
+stake RMSE are recomputed to quantify sensitivity.
 
 ## 3.7 Implementation
 

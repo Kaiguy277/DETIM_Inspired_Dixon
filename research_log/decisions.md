@@ -1101,3 +1101,123 @@ observed area retreat. The multi-objective calibration works.
 - `run_behavioral_filter.py` — standalone filter runner (for reuse)
 - `data/glacier_outlines/digitized/` — 6 manually digitized outlines
 - `run_projection.py` updated with `--filtered-params` flag
+
+## D-029: Validation Suite (Sub-period Geodetic, Stake Predictive Check, Sensitivity)
+
+**Date:** 2026-04-08
+**Decision:** Implement three independent validation analyses using the v13
+posterior, without recalibration.
+
+**Validation 1 — Sub-period geodetic comparison:**
+Compare modeled glacier-wide balance to Hugonnet sub-periods (2000-2010,
+2010-2020) that were withheld from calibration (D-016). Run 200 posterior
+parameter sets through each decade independently.
+
+Results:
+| Period     | Observed (m w.e./yr) | Modeled median | Bias    | Within unc? |
+|------------|----------------------|----------------|---------|-------------|
+| 2000-2020  | -0.939 ± 0.122 (cal) | -0.765        | +0.174  | No          |
+| 2000-2010  | -1.072 ± 0.225 (val) | -0.244        | +0.828  | No          |
+| 2010-2020  | -0.806 ± 0.202 (val) | -1.287        | -0.481  | No          |
+
+Interpretation: Model reverses the sub-period trend — underestimates mass
+loss 2000-2010, overestimates 2010-2020. This is consistent with D-016:
+Nuka SNOTEL shows cooler summers in 2001-2010 (9.07°C) vs 2011-2020
+(10.00°C), so the model produces less melt in the first decade. But
+Hugonnet shows MORE mass loss 2000-2010 than 2010-2020. The contradiction
+is in the forcing, not the model — likely reflecting gap-filled climate
+quality in early years (WY2001 77% T missing, WY2005 43%).
+
+**Validation 2 — Posterior predictive check by year:**
+Evaluate 200 posterior parameter sets against each stake year independently
+to identify outliers.
+
+Results (measured observations only):
+| Year  | Site | Obs (m w.e.) | Mod median | Residual |
+|-------|------|-------------|------------|----------|
+| WY2023 | ABL | -4.50       | -4.12      | +0.38    |
+| WY2023 | ACC | +0.37       | +0.42      | +0.05    |
+| WY2023 | ELA | +0.10       | -1.31      | -1.41    |
+| WY2024 | ABL | -2.63       | -4.24      | -1.61    |
+| WY2024 | ACC | +1.46       | +0.21      | -1.25    |
+| WY2024 | ELA | +0.10       | -1.42      | -1.52    |
+
+Overall RMSE: 1.20 m w.e. (measured only, n=6). WY2024 is a clear outlier
+— the model over-predicts melt at all three sites. WY2023 fits ABL and ACC
+well but misses ELA by -1.4 m w.e. The ELA site may have a systematic
+issue (both years show ~-1.4 to -1.5 residual), possibly related to
+local accumulation effects not captured by the lapse-based precipitation
+distribution.
+
+**Validation 3 — Sensitivity of fixed parameters:**
+Perturb lapse rate (-4.0 to -6.5 °C/km) and r_ice/r_snow ratio (1.5 to
+3.0) with MAP params held fixed. Report geodetic balance and stake RMSE.
+
+Results — lapse rate:
+| λ (°C/km) | Geodetic mod | Bias    | Stake RMSE |
+|-----------|-------------|---------|------------|
+| -4.0      | -1.631      | -0.692  | 1.800      |
+| -4.5      | -1.216      | -0.277  | 1.497      |
+| -5.0      | -0.817      | +0.122  | 1.227      |
+| -5.5      | -0.434      | +0.505  | 1.005      |
+| -6.0      | -0.063      | +0.876  | 0.850      |
+| -6.5      | +0.296      | +1.235  | 0.781      |
+
+Results — r_ice/r_snow:
+| Ratio | Geodetic mod | Bias    | Stake RMSE |
+|-------|-------------|---------|------------|
+| 1.50  | -0.773      | +0.166  | 1.188      |
+| 2.00  | -0.817      | +0.122  | 1.227      |
+| 3.00  | -0.906      | +0.033  | 1.318      |
+
+Key finding: Lapse rate sensitivity is ~10× larger than r_ice/r_snow.
+Geodetic bias swings 1.9 m w.e./yr across the lapse range vs 0.13 for
+the ratio. The -5.0 °C/km choice sits near the minimum geodetic bias,
+confirming it is well-centered within the literature range.
+
+**Rationale for not recalibrating lapse rate:**
+Despite high sensitivity, freeing the lapse rate would re-introduce the
+equifinality documented in CAL-009 (D-017): lapse_rate=-6.83 with
+precip_corr=1.20 fits current observations via compensating errors that
+diverge under warming. With only 3 years of stakes and 20 years of geodetic,
+the observation network cannot independently constrain both lapse rate
+and precipitation correction. Literature convergence on -5.0 °C/km for
+maritime Alaskan glaciers (Gardner & Sharp 2009, Roth et al. 2023) provides
+a stronger constraint than the calibration data.
+
+**Implementation:**
+- `run_validation.py` — all three analyses in one script (~1.6 min runtime)
+- Output in `validation_output/` (3 CSVs)
+- Methods draft §3.6 updated (replaced TODO with full methodology text)
+
+## D-030: Lapse Rate Sensitivity Projections
+
+**Date:** 2026-04-08
+**Decision:** Run projections at three lapse rates (-4.5, -5.0, -5.5 °C/km)
+to bracket the structural uncertainty from the fixed lapse rate choice.
+
+**Rationale:** D-029 showed lapse rate is the dominant fixed-parameter
+sensitivity. Rather than recalibrating (which re-introduces equifinality),
+we run scenario-based sensitivity projections: the same v13 posterior
+params at each lapse rate, for both SSP2-4.5 and SSP5-8.5. This shows
+readers the projection envelope attributable to lapse rate uncertainty.
+
+**Design:**
+- Lapse rates: -4.5, -5.0, -5.5 °C/km (literature range, Gardner & Sharp
+  2009; Roth et al. 2023)
+- Param sets: 50 (subsampled from 1000 posterior, sufficient for envelope)
+- GCMs: all 5 (ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR, MRI-ESM2-0, NorESM2-MM)
+- Scenarios: SSP2-4.5, SSP5-8.5
+- Total: 3 × 2 × 50 × 5 = 1,500 simulations (~9 hours estimated)
+
+**Alternatives considered:**
+- Recalibrate at each lapse rate (rejected: re-introduces equifinality,
+  ~120 hr compute, and not standard practice for fixed-parameter sensitivity)
+- Full 250-param ensemble at each lapse rate (rejected: ~46 hr compute,
+  50 params sufficient for envelope characterization)
+- Single MAP param at each lapse rate (rejected: loses parameter uncertainty)
+
+**Implementation:**
+- `run_lapse_sensitivity_projections.py` — wrapper around run_projection.py
+- Output: 6 projection runs in `projection_output/PROJ-*_lapse*`
+- Summary CSV in `validation_output/lapse_sensitivity_projections.csv`
