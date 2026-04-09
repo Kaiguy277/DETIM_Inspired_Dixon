@@ -262,7 +262,23 @@ compared to observed values at all three stake elevations (ABL, ELA, ACC).
 This identifies whether any single year dominates the calibration fit or
 whether the posterior generalizes across the observation period.
 
-### 3.6.3 Sensitivity of Fixed Parameters
+### 3.6.3 Known Spatial Bias at ELA
+
+The ELA stake (1078 m) exhibits a persistent negative bias of approximately
+-1.4 m w.e. in both WY2023 and WY2024, while ABL and ACC residuals are
+small (+0.38, +0.05 m w.e. in WY2023). This bias is attributed to wind
+redistribution: digitized snowlines show systematically greater accumulation
+on the southern branch of the glacier where the ELA stake is located,
+consistent with preferential wind-loading in this sheltered zone. The model
+distributes precipitation uniformly by elevation and predicts the *average*
+balance across all 814 cells at 1028–1128 m (20.3% of glacier area), whereas
+the stake observation represents a single point in a locally favored
+accumulation zone. The glacier-wide geodetic constraint (within 2σ of
+Hugonnet et al., 2021) confirms that the integrated mass balance is
+well-captured; the ELA discrepancy reflects a measurement representativity
+limitation rather than a model calibration failure.
+
+### 3.6.4 Sensitivity of Fixed Parameters
 
 Two parameters are fixed from literature rather than calibrated: the lapse
 rate (λ = -5.0 °C km⁻¹) and the r_ice/r_snow ratio (2.0). To quantify

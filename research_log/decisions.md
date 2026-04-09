@@ -1221,3 +1221,71 @@ readers the projection envelope attributable to lapse rate uncertainty.
 - `run_lapse_sensitivity_projections.py` — wrapper around run_projection.py
 - Output: 6 projection runs in `projection_output/PROJ-*_lapse*`
 - Summary CSV in `validation_output/lapse_sensitivity_projections.csv`
+
+## D-031: ELA Stake Bias — Wind Redistribution Representativity
+
+**Date:** 2026-04-09
+**Decision:** Accept the persistent -1.4 m w.e. bias at the ELA stake
+(1078 m) as a measurement representativity issue, not a calibration failure.
+Document rather than recalibrate.
+
+**Evidence — the bias is spatial, not temporal:**
+- ELA residual: -1.41 (WY2023), -1.52 (WY2024) — nearly identical both years
+- ABL residual: +0.38 (WY2023), same elevation band on main trunk → good fit
+- ACC residual: +0.05 (WY2023) → excellent fit
+- The model predicts -1.3 m w.e. as the *average* across all 814 glacier cells
+  at 1028-1128 m (20.3% of glacier area). The observation is from ONE location
+  on the southern branch.
+
+**Physical explanation — wind redistribution to southern branch:**
+- Digitized snowlines show systematically lower snowlines (more accumulation)
+  on the southern branch where the ELA stake is located
+- Wind exposure (Sx): 70% of glacier cells are in sheltered (deposition)
+  zones, 30% exposed (erosion). The southern branch is a deposition zone.
+- The ELA stake site receives preferential wind-loaded accumulation that is
+  not representative of the elevation-band average
+- A constant precip_grad cannot capture this spatial variability
+
+**Why recalibration won't help:**
+- k_wind was tested in CAL-007 and converged to ~0 — the observation network
+  (3 stakes + geodetic) cannot constrain a wind redistribution parameter
+- Forcing the model to match +0.1 m w.e. at ELA would require over-
+  accumulating at ALL cells in that elevation band, breaking the geodetic
+  fit (-0.939 ± 0.122) and the ABL/ACC stakes
+- The model's glacier-wide balance is within 2σ of geodetic (bias +0.17).
+  The ELA bias (+1.4 × ~20% area ≈ +0.28 m w.e.) is consistent with the
+  geodetic bias being partly caused by the same unmodeled wind effect.
+
+**Why this is acceptable for projections:**
+- Projections use glacier-wide metrics (area, volume, discharge), not point
+  balances. The glacier-wide fit is constrained by the geodetic observation.
+- The lapse rate sensitivity bracket (D-030: -4.5 to -5.5 °C/km) spans a
+  wider projection uncertainty (9 km² by 2100) than the ELA bias would cause.
+- ABL and ACC — which ARE representative of their elevation bands — validate
+  well in WY2023 (0.38, 0.05 m w.e. residuals).
+
+**WY2024 forcing limitation (separate issue):**
+WY2024 shows large residuals at all sites (not just ELA). Root cause: Nuka
+SNOTEL recorded 912 mm winter precip (similar to WY2023's 864 mm), but
+observed winter balance at Dixon was dramatically higher (ABL: 0.85 → 1.93,
++127%). The off-glacier forcing station missed a local accumulation event.
+This is a forcing data limitation, not a model deficiency. The precipitation
+gradient also flattened from 38%/100m (WY2023) to 11%/100m (WY2024),
+confirming the interannual variability that a single precip_grad cannot
+capture.
+
+**Alternatives considered:**
+- Increase ELA uncertainty to ~0.5 m w.e. and recalibrate (deferred: would
+  improve formal statistics but not change the physical model. Current
+  calibration already weights ELA correctly given its stated uncertainty.)
+- Re-enable k_wind with snowlines as constraint (rejected: snowline
+  validation showed model spatial std 6-22m vs observed 24-69m — the model
+  cannot resolve the spatial structure that wind creates)
+- Exclude ELA from calibration entirely (rejected: still provides useful
+  gradient constraint even if biased; removing it would lose information)
+
+**References:**
+- Geck et al. (2021) documented similar spatial representativity issues
+  at Eklutna, noting snowline over-prediction at end of season
+- Hock (1999): DETIM distributes precipitation by elevation only;
+  wind redistribution requires explicit parameterization
