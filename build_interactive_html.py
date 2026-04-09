@@ -1294,91 +1294,178 @@ on a 100 m grid (4,011 glacier cells). The full MCMC ensemble ({n_walkers} walke
 <div class="section" id="ai-methods">
 <h2>3.8 AI-Assisted Development</h2>
 
-<p>Model development, calibration, analysis, and thesis preparation were conducted in
-collaboration with <strong>Claude Code</strong> (Anthropic, Claude Opus 4.6), an AI-assisted
-software engineering tool. The researcher directed all scientific decisions, provided
-domain expertise, field observations, and local knowledge of Dixon Glacier. Claude Code
-contributed implementation support. This section documents the AI&rsquo;s role for
-transparency and reproducibility.</p>
+<p>The entire Dixon Glacier DETIM codebase was developed collaboratively with
+<strong>Claude Code</strong> (Anthropic, Claude Opus 4.6), a large language model (LLM)
+operated through an interactive command-line interface. The researcher directed all
+scientific decisions, provided domain expertise, collected field observations, and
+digitized remote sensing data. Claude Code served as an implementation partner&mdash;translating
+the researcher&rsquo;s scientific intent into working code, running analyses, and
+drafting documentation. This section describes the scope of AI assistance, its boundaries,
+and the measures taken to ensure reproducibility and accountability.</p>
 
-<h3>3.8.1 Scope of AI Assistance</h3>
+<h3>3.8.1 Codebase Overview</h3>
 
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.2em; margin:1em 0;">
-  <div style="background:rgba(108,140,255,0.1); padding:1em; border-radius:8px; border-left:3px solid #6c8cff;">
-    <h4 style="margin-top:0; color:#6c8cff;">Model Implementation</h4>
-    <p>Translated published equations (Hock 1999, Huss et al. 2010, Hock &amp; Jansson 2005)
-    into Python with Numba JIT compilation. Structured the modular package architecture
-    (18 modules, ~3,900 lines). Optimized the simulation kernel to ~240 ms per water-year.</p>
-  </div>
-  <div style="background:rgba(245,158,11,0.1); padding:1em; border-radius:8px; border-left:3px solid #f59e0b;">
-    <h4 style="margin-top:0; color:#f59e0b;">Calibration Pipeline</h4>
-    <p>Implemented the two-phase Bayesian calibration (DE + MCMC), objective function,
-    convergence diagnostics, multi-seed clustering, snowline likelihood terms, and
-    behavioral filtering. Researcher selected targets, bounds, and evaluated physical
-    reasonableness.</p>
-  </div>
-  <div style="background:rgba(94,234,212,0.1); padding:1em; border-radius:8px; border-left:3px solid #5eead4;">
-    <h4 style="margin-top:0; color:#5eead4;">Data Processing</h4>
-    <p>Multi-station gap-filling of Nuka SNOTEL (D-025), CMIP6 download and bias
-    correction from NEX-GDDP-CMIP6, snowline processing. Researcher identified data
-    sources, evaluated quality, and selected methodology.</p>
-  </div>
-  <div style="background:rgba(239,68,68,0.1); padding:1em; border-radius:8px; border-left:3px solid #ef4444;">
-    <h4 style="margin-top:0; color:#ef4444;">Analysis &amp; Visualization</h4>
-    <p>Validation analyses, historical ensemble, projection runs, and publication-quality
-    figures (styled after Geck et al. 2021). 30 runner/plotting scripts (~16,000 lines).
-    Interactive methods document for advisor presentation.</p>
-  </div>
+<p>The project comprises <strong>54 Python files</strong> totaling <strong>20,202 lines of code</strong>,
+organized into a core model package and a suite of analysis scripts:</p>
+
+<table class="data-table">
+<thead><tr><th>Component</th><th>Files</th><th>Lines</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>dixon_melt/</code> package</td><td>18 modules</td><td>3,914</td>
+    <td>Core DETIM model: physics, calibration, dynamics, routing, climate I/O</td></tr>
+<tr><td><code>run_*.py</code> scripts</td><td>14</td><td>7,404</td>
+    <td>Calibration (v10&ndash;v13), projections, validation, historical ensemble</td></tr>
+<tr><td><code>plot_*.py</code> scripts</td><td>12</td><td>4,385</td>
+    <td>Publication figures, diagnostics, climate overview, snowline visualization</td></tr>
+<tr><td>Data processing</td><td>4</td><td>1,050</td>
+    <td>CMIP6 download, transfer coefficients, outline generation, SNOTEL analysis</td></tr>
+<tr><td>Other</td><td>6</td><td>3,449</td>
+    <td>Interactive HTML builder, glacier retreat animation, ranking scripts</td></tr>
+</tbody>
+<tfoot><tr><td><strong>Total</strong></td><td><strong>54</strong></td><td><strong>20,202</strong></td><td></td></tr></tfoot>
+</table>
+
+<details>
+<summary>Expand: Full module listing (<code>dixon_melt/</code>)</summary>
+<div class="detail-content">
+<table class="data-table">
+<thead><tr><th>Module</th><th>Lines</th><th>Role</th></tr></thead>
+<tbody>
+<tr><td><code>config.py</code></td><td>193</td><td>Site constants, station metadata, default parameters</td></tr>
+<tr><td><code>terrain.py</code></td><td>238</td><td>DEM loading, reprojection, glacier mask, slope/aspect</td></tr>
+<tr><td><code>solar.py</code></td><td>187</td><td>Clear-sky direct radiation (Oke 1987) with topographic shading</td></tr>
+<tr><td><code>temperature.py</code></td><td>46</td><td>Statistical temperature transfer (monthly coefficients)</td></tr>
+<tr><td><code>precipitation.py</code></td><td>67</td><td>Elevation gradient, rain/snow partitioning</td></tr>
+<tr><td><code>melt.py</code></td><td>70</td><td>DETIM melt equation (MF + r &times; I<sub>pot</sub>) &times; T</td></tr>
+<tr><td><code>snowpack.py</code></td><td>98</td><td>SWE tracking, surface type (snow/firn/ice)</td></tr>
+<tr><td><code>massbalance.py</code></td><td>62</td><td>Glacier-wide and point balance extraction</td></tr>
+<tr><td><code>model.py</code></td><td>264</td><td>Pure-Python orchestration (development/testing)</td></tr>
+<tr><td><code>fast_model.py</code></td><td>369</td><td>Numba JIT-compiled simulation kernel (production)</td></tr>
+<tr><td><code>climate.py</code></td><td>606</td><td>Multi-station gap-fill cascade (D-025)</td></tr>
+<tr><td><code>calibration.py</code></td><td>169</td><td>Objective function, priors, parameter management</td></tr>
+<tr><td><code>snowline_validation.py</code></td><td>328</td><td>Observed vs modeled snowline comparison</td></tr>
+<tr><td><code>behavioral_filter.py</code></td><td>418</td><td>Area evolution filter (6 digitized outlines)</td></tr>
+<tr><td><code>glacier_dynamics.py</code></td><td>451</td><td>Delta-h parameterization (Huss et al. 2010)</td></tr>
+<tr><td><code>climate_projections.py</code></td><td>235</td><td>CMIP6 bias correction and downscaling</td></tr>
+<tr><td><code>routing.py</code></td><td>112</td><td>Parallel linear reservoir discharge model</td></tr>
+</tbody></table>
 </div>
+</details>
 
-<h3>3.8.2 What AI Did Not Do</h3>
+<h3>3.8.2 Scope of AI Assistance</h3>
 
-<p>All scientific judgment remained with the researcher:</p>
+<p>The collaboration followed a consistent pattern: the researcher identified a scientific
+need (e.g., &ldquo;implement Huss et al. 2010 delta-h geometry update&rdquo;), provided
+references and physical constraints, and Claude Code wrote the implementation. The
+researcher then reviewed the code, ran it, evaluated whether results were physically
+reasonable, and directed revisions. Key areas of AI contribution:</p>
+
+<p><strong>Model physics implementation.</strong> Published equations from Hock (1999),
+Huss et al. (2010), Hock &amp; Jansson (2005), and Oke (1987) were translated into
+the <code>dixon_melt/</code> package. The Numba-compiled simulation kernel
+(<code>fast_model.py</code>) achieves ~240 ms per water-year on a 100 m grid (4,011
+glacier cells), enabling the 6,750-run historical ensemble and 7,500-run projection
+ensemble to complete in under 2 hours each.</p>
+
+<p><strong>Calibration pipeline.</strong> The two-phase Bayesian calibration (13 calibration
+versions, CAL-001 through CAL-013) was implemented iteratively. Each calibration failure
+led to a joint diagnosis&mdash;the researcher identified physical implausibilities
+(e.g., the Nuka SNOTEL elevation error in D-013: 1,230 feet misread as 1,230 meters)
+while Claude Code traced bugs through the code. The multi-objective likelihood function
+(stakes + geodetic + snowline elevation, D-028) and behavioral filter (area evolution,
+6 digitized outlines) were designed collaboratively.</p>
+
+<p><strong>Data processing and quality control.</strong> The multi-station gap-fill
+cascade (D-025) involved evaluating 5 nearby SNOTEL stations against Dixon AWS ground
+truth, computing monthly transfer coefficients, and building a priority-ordered fill
+routine. The CMIP6 download pipeline retrieves NEX-GDDP-CMIP6 data from AWS S3 for
+5 GCMs &times; 3 SSPs (76 years each, ~150 GB of global NetCDF processed to single-pixel
+CSVs). The cftime calendar bug fix (NorESM2-MM DatetimeNoLeap) was diagnosed and
+resolved during this session.</p>
+
+<p><strong>Analysis, visualization, and documentation.</strong> Validation analyses
+(D-029: geodetic sub-periods, stake predictive check, parameter sensitivity), the
+historical ensemble (250 params &times; 27 water years), projection ensembles (250 params
+&times; 5 GCMs &times; 3 SSPs), lapse rate sensitivity bracket (3 lapse rates &times; 3 SSPs),
+and 12 publication-quality figures were produced. The research decision log
+(D-001&ndash;D-031) was drafted by Claude Code and reviewed/approved by the researcher.</p>
+
+<h3>3.8.3 What AI Did Not Do</h3>
+
+<p>All scientific judgment remained with the researcher. Specifically:</p>
 
 <ul>
-  <li>Selection of the DETIM model and Method 2 (Hock, 1999)</li>
-  <li>Field data collection (stake measurements, AWS deployment at ELA)</li>
-  <li>Manual digitization of glacier outlines and snowlines from satellite imagery</li>
-  <li>Choice of calibration targets, parameter bounds, and fixed parameter values</li>
-  <li>Interpretation of calibration results and identification of structural limitations
-      (e.g., ELA wind redistribution bias, D-031)</li>
-  <li>Evaluation of whether results are physically reasonable</li>
-  <li>Decisions to accept, modify, or reject model configurations (D-001 through D-031)</li>
+  <li><strong>Model selection:</strong> Choice of DETIM Method 2 (Hock, 1999) over
+  energy-balance or other temperature-index variants</li>
+  <li><strong>Field work:</strong> Stake installation, maintenance, and measurement;
+  AWS deployment at the ELA site; spring snow survey (GPS coordinates from
+  Dixon_Spring_2024UTM6WGS84.shp)</li>
+  <li><strong>Remote sensing:</strong> Manual digitization of 6 glacier outlines
+  (2000&ndash;2025) and 22 years of snowlines from Landsat imagery</li>
+  <li><strong>Parameter decisions:</strong> Bounds, priors, and which parameters
+  to fix vs. calibrate (D-015, D-017). The decision to fix lapse rate at
+  &minus;5.0 &deg;C km&minus;&sup1; and document sensitivity rather than recalibrate
+  was a researcher judgment call based on equifinality analysis</li>
+  <li><strong>Result interpretation:</strong> Identification of the ELA wind
+  redistribution bias (D-031), the WY2024 forcing limitation, and the
+  sub-period geodetic discrepancy as structural rather than calibration issues</li>
+  <li><strong>Scope decisions:</strong> When Claude Code suggested recalibrating
+  with lapse rate free, the researcher chose the bracket approach instead.
+  All 31 decisions in the log reflect the researcher&rsquo;s scientific judgment.</li>
 </ul>
 
-<h3>3.8.3 Reproducibility &amp; Traceability</h3>
+<h3>3.8.4 Development Timeline</h3>
 
 <div class="stats-row">
-  <div class="stat"><div class="stat-value">32</div><div class="stat-label">Git commits</div></div>
-  <div class="stat"><div class="stat-value">31</div><div class="stat-label">AI-assisted commits</div></div>
-  <div class="stat"><div class="stat-value">~20,000</div><div class="stat-label">Lines of Python</div></div>
-  <div class="stat"><div class="stat-value">31</div><div class="stat-label">Documented decisions</div></div>
+  <div class="stat"><div class="stat-value">33</div><div class="stat-label">Git commits</div></div>
+  <div class="stat"><div class="stat-value">33</div><div class="stat-label">AI co-authored</div></div>
+  <div class="stat"><div class="stat-value">20,202</div><div class="stat-label">Lines of Python</div></div>
+  <div class="stat"><div class="stat-value">54</div><div class="stat-label">Python files</div></div>
+  <div class="stat"><div class="stat-value">31</div><div class="stat-label">Decisions logged</div></div>
+  <div class="stat"><div class="stat-value">13</div><div class="stat-label">Calibration versions</div></div>
 </div>
 
-<p>All AI-assisted commits are tagged with a <code>Co-Authored-By: Claude Opus 4.6</code>
-trailer for traceability. The complete decision log (D-001&ndash;D-031), calibration registry
-(CAL-001&ndash;CAL-013), and version-controlled codebase ensure that AI contributions can be
-audited. All analysis pipelines are deterministic (given fixed random seeds) and reproducible
-independently of AI assistance.</p>
+<p>The project evolved through 13 calibration iterations (CAL-001&ndash;CAL-013), with
+each version addressing issues discovered in the previous run. Early versions (CAL-001
+through CAL-007) uncovered fundamental bugs&mdash;most notably the Nuka SNOTEL elevation
+error (D-013) and the Dixon AWS elevation error (D-023)&mdash;that required rethinking
+the temperature transfer approach. Later versions (CAL-010&ndash;CAL-013) progressively
+added Bayesian ensemble sampling (D-017), multi-seed optimization (D-026&ndash;D-027),
+snowline constraints in the likelihood (D-028), and area evolution filtering.
+28 projection runs were executed across baseline and sensitivity configurations.</p>
+
+<h3>3.8.5 Reproducibility &amp; Traceability</h3>
+
+<p>All AI-assisted commits are tagged with a <code>Co-Authored-By: Claude Opus 4.6
+(1M context) &lt;noreply@anthropic.com&gt;</code> trailer in the Git history, enabling
+auditing of which changes involved AI assistance. The codebase is self-contained and
+can be executed without AI access&mdash;all random seeds are fixed, file paths are
+absolute, and the decision log (D-001&ndash;D-031) provides a complete rationale for
+every modeling choice. The <code>research_log/</code> directory, tracked in Git,
+serves as a permanent record of the development process.</p>
 
 <details>
 <summary>Expand: Ethical considerations</summary>
 <div class="detail-content">
-<p>The use of AI in scientific research raises questions about authorship, accountability,
-and reproducibility. In this work:</p>
+<p>The use of AI in scientific research raises legitimate questions about authorship,
+accountability, and potential bias. This project addresses them as follows:</p>
 <ul>
   <li><strong>Accountability:</strong> The researcher assumes full responsibility for all
-  scientific claims, interpretations, and conclusions. AI-generated code and text were
-  reviewed before acceptance.</li>
+  scientific claims, interpretations, and conclusions presented in this thesis. All
+  AI-generated code and text were reviewed before acceptance. Errors in the model or
+  analysis are the researcher&rsquo;s responsibility.</li>
   <li><strong>Authorship:</strong> Claude Code is credited as a co-author on Git commits
-  (per Anthropic&rsquo;s guidelines) but does not meet the ICMJE criteria for manuscript
-  authorship. The tool is acknowledged in the methods section.</li>
-  <li><strong>Reproducibility:</strong> The codebase is self-contained and can be executed
-  without AI assistance. All random seeds are fixed. The decision log provides a complete
-  audit trail of why each modeling choice was made.</li>
-  <li><strong>Bias awareness:</strong> AI may introduce systematic biases in code structure,
-  analysis choices, or interpretation framing. The researcher mitigated this through
-  independent validation of results against published literature and advisor review.</li>
+  (per Anthropic guidelines) but does not meet ICMJE criteria for manuscript authorship.
+  It is acknowledged as a tool in this methods section, analogous to acknowledging use of
+  MATLAB, R, or other software tools.</li>
+  <li><strong>Reproducibility:</strong> The codebase is deterministic (fixed random seeds)
+  and version-controlled. Any researcher with access to the input data can reproduce all
+  results without AI assistance by running the scripts in sequence.</li>
+  <li><strong>Potential bias:</strong> LLMs may introduce systematic biases in code
+  architecture, analysis framing, or interpretation. The researcher mitigated this by
+  validating all outputs against published literature (particularly Geck et al. 2021 on
+  Eklutna Glacier, a directly comparable study by the thesis advisor), independent
+  calculation checks, and advisor review of results.</li>
 </ul>
 </div>
 </details>
