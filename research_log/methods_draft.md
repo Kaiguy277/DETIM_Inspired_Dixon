@@ -233,7 +233,7 @@ uncertainty from both parameter equifinality and climate forcing.
 
 To bracket structural uncertainty from the fixed lapse rate, projections are
 additionally run at -4.5 and -5.5 °C km⁻¹ (spanning the literature range
-for maritime Alaskan glaciers) using 50 posterior parameter sets. This
+for maritime Alaskan glaciers) using 250 posterior parameter sets. This
 scenario-based sensitivity analysis uses the same calibrated parameters at
 each lapse rate, isolating the effect of the lapse rate assumption on
 projected glacier evolution.

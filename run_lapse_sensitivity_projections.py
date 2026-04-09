@@ -35,8 +35,8 @@ FILTERED_PARAMS_PATH = PROJECT / 'calibration_output' / 'filtered_params_v13.jso
 # Lapse rates to test (°C/km → °C/m internally)
 LAPSE_RATES_CKM = [-4.5, -5.0, -5.5]
 
-# Use 50 param sets (subset of 1000 posterior) for tractable runtime
-N_SAMPLES = 50
+# Use 250 param sets (matching baseline projections PROJ-009/011)
+N_SAMPLES = 250
 
 # SSP scenarios
 SCENARIOS = ['ssp245', 'ssp585']
@@ -95,7 +95,7 @@ def main():
     base_params = load_and_subsample_params(N_SAMPLES)
     print(f"\nSubsampled {len(base_params)} param sets from posterior")
 
-    from run_projection import run_projection
+    from run_projection import run_projection, create_run_dir
 
     results_summary = []
 
@@ -106,6 +106,7 @@ def main():
 
         for scenario in SCENARIOS:
             label = f'lapse{lapse_ckm:.1f}_{scenario}'
+            run_dir = create_run_dir(len(modified_params), [scenario], label=label)
             print(f"\n{'#' * 70}")
             print(f"# LAPSE = {lapse_ckm} °C/km, {scenario.upper()}")
             print(f"{'#' * 70}")
@@ -115,7 +116,7 @@ def main():
                 end_year=2100,
                 grid_res=100.0,
                 filtered_params_path=str(temp_path),
-                label=label,
+                output_dir=run_dir,
             )
 
             if result is not None:

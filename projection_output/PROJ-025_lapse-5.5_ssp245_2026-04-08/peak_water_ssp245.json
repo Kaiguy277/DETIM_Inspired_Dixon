@@ -1,0 +1,10 @@
+{
+  "peak_year": 2061,
+  "peak_discharge_m3s": 8.3711889029542,
+  "gcm_min": 6.800341259319491,
+  "gcm_max": 9.083568892045777,
+  "window_years": 11,
+  "n_param_samples": 250,
+  "n_gcms": 5,
+  "n_total_runs": 1250
+}

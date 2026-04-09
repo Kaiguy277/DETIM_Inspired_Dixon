@@ -1205,16 +1205,16 @@ readers the projection envelope attributable to lapse rate uncertainty.
 **Design:**
 - Lapse rates: -4.5, -5.0, -5.5 °C/km (literature range, Gardner & Sharp
   2009; Roth et al. 2023)
-- Param sets: 50 (subsampled from 1000 posterior, sufficient for envelope)
+- Param sets: 250 (subsampled from 1000 posterior, matching baseline PROJ-009/011)
 - GCMs: all 5 (ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR, MRI-ESM2-0, NorESM2-MM)
 - Scenarios: SSP2-4.5, SSP5-8.5
-- Total: 3 × 2 × 50 × 5 = 1,500 simulations (~9 hours estimated)
+- Total: 3 × 2 × 250 × 5 = 7,500 simulations (~1.5 hours)
 
 **Alternatives considered:**
 - Recalibrate at each lapse rate (rejected: re-introduces equifinality,
   ~120 hr compute, and not standard practice for fixed-parameter sensitivity)
-- Full 250-param ensemble at each lapse rate (rejected: ~46 hr compute,
-  50 params sufficient for envelope characterization)
+- Full 1000-param ensemble at each lapse rate (rejected: unnecessary,
+  250 matches baseline projections and captures parameter uncertainty)
 - Single MAP param at each lapse rate (rejected: loses parameter uncertainty)
 
 **Implementation:**

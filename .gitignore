@@ -23,6 +23,21 @@ calibration_output/calibration_v[2-8]_stdout.log
 # Animation outputs (large MP4/GIF)
 projection_output/PROJ-*_animation-*
 
+# Superseded projection runs (replaced by 250-param versions)
+projection_output/PROJ-004_*
+projection_output/PROJ-005_*
+projection_output/PROJ-012_*
+projection_output/PROJ-013_*
+projection_output/PROJ-014_*
+projection_output/PROJ-015_*
+projection_output/PROJ-016_*
+projection_output/PROJ-017_*
+projection_output/PROJ-018_*
+projection_output/PROJ-019_*
+
+# Temp lapse-rate param files
+calibration_output/_temp_lapse*
+
 # CMIP6 temp files and auth tokens
 data/cmip6/tmp/
 data/cmip6/gdrive_token.json

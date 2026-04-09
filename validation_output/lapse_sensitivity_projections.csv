@@ -1,0 +1,7 @@
+lapse_rate_ckm,scenario,area_2100_p50,area_2100_p05,area_2100_p95,volume_2100_p50,peak_water_year,peak_discharge_m3s,output_dir
+-4.5,ssp245,18.23,15.75,23.87,1.887315997473492,2058,8.500711799006647,/home/kai/Documents/Opus46Dixon_FirstShot/projection_output/PROJ-021_lapse-4.5_ssp245_2026-04-08
+-4.5,ssp585,8.605,6.18,21.45,0.37105051986726645,2061,8.964534270669938,/home/kai/Documents/Opus46Dixon_FirstShot/projection_output/PROJ-022_lapse-4.5_ssp585_2026-04-08
+-5.0,ssp245,22.03,18.85,29.34,2.5108584683102015,2058,8.450357225282108,/home/kai/Documents/Opus46Dixon_FirstShot/projection_output/PROJ-023_lapse-5.0_ssp245_2026-04-08
+-5.0,ssp585,12.14,11.26,25.94,0.770986142969529,2063,9.082196538951035,/home/kai/Documents/Opus46Dixon_FirstShot/projection_output/PROJ-024_lapse-5.0_ssp585_2026-04-08
+-5.5,ssp245,27.21,22.5,33.56,3.214541368310897,2061,8.3711889029542,/home/kai/Documents/Opus46Dixon_FirstShot/projection_output/PROJ-025_lapse-5.5_ssp245_2026-04-08
+-5.5,ssp585,14.85,14.1,31.24,1.2472587959907382,2065,9.182370350761948,/home/kai/Documents/Opus46Dixon_FirstShot/projection_output/PROJ-026_lapse-5.5_ssp585_2026-04-08

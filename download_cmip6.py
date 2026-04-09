@@ -44,9 +44,18 @@ ENSEMBLE = 'r1i1p1f1'
 def extract_pixel(nc_path, variable):
     """Extract Dixon pixel from global NetCDF. Returns (dates, values)."""
     import xarray as xr
+    from datetime import datetime
     ds = xr.open_dataset(nc_path)
     point = ds.sel(lat=DIXON_LAT, lon=DIXON_LON_360, method='nearest')
-    dates = point['time'].values
+    raw_dates = point['time'].values
+    # Handle cftime calendars (DatetimeNoLeap, Datetime360Day, etc.)
+    dates = []
+    for d in raw_dates:
+        try:
+            dates.append(pd.Timestamp(d))
+        except Exception:
+            # cftime object — extract year/month/day manually
+            dates.append(pd.Timestamp(datetime(d.year, d.month, d.day)))
     values = point[variable].values.astype(np.float64)
     if variable == 'tas':
         values -= 273.15
