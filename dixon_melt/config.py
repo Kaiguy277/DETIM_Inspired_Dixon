@@ -127,8 +127,11 @@ WIND_AZIMUTH = 100.0       # degrees CW from N, direction wind comes FROM
 WIND_SEARCH_DIST = 300.0   # meters, max upwind search distance for Sx
 
 # ── Stake locations ─────────────────────────────────────────────────
+# Surveyed spring 2024 (Dixon_Spring_2024UTM6WGS84.shp, EPSG:32606)
 STAKE_NAMES = ['ABL', 'ELA', 'ACC']
 STAKE_ELEVS = np.array([804.0, 1078.0, 1293.0])
+STAKE_LONS = np.array([-150.894579, -150.872020, -150.818583])
+STAKE_LATS = np.array([59.676019, 59.642104, 59.637128])
 STAKE_TOL = 50.0  # m, elevation tolerance for extracting stake values
 
 # ── Default model parameters (calibration will tune these) ──────────

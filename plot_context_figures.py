@@ -119,29 +119,19 @@ def fig_09_glacier_map():
     # Glacier outline
     outline.boundary.plot(ax=ax, color="k", linewidth=2, label="RGI7 outline (2000)")
 
-    # Stake locations — find glacier cells at target elevations
+    # Stake locations — surveyed coordinates (Dixon_Spring_2024UTM6WGS84.shp)
     stake_info = [
-        ("ABL", 804, "#d6604d", "v"),
-        ("ELA", 1078, "#f4a582", "s"),
-        ("ACC", 1293, "#4393c3", "^"),
+        ("ABL", 804, -150.894579, 59.676019, "#d6604d", "v"),
+        ("ELA", 1078, -150.872020, 59.642104, "#f4a582", "s"),
+        ("ACC", 1293, -150.818583, 59.637128, "#4393c3", "^"),
     ]
-    for name, elev_target, color, marker in stake_info:
-        valid = glacier_mask & (~np.isnan(dem))
-        elev_diff = np.abs(dem - elev_target)
-        elev_diff[~valid] = 9999
-        candidates = np.where(elev_diff < 30)
-        if len(candidates[0]) > 0:
-            mid_idx = len(candidates[0]) // 2
-            row, col = candidates[0][mid_idx], candidates[1][mid_idx]
-            # Convert pixel to lon/lat using the cropped transform
-            x = transform[2] + col * transform[0] + transform[0] / 2
-            y = transform[5] + row * transform[4] + transform[4] / 2
-            ax.plot(x, y, marker=marker, ms=14, color=color,
-                    markeredgecolor="k", markeredgewidth=1.5, zorder=10)
-            ax.annotate(f"{name}\n({elev_target} m)", (x, y),
-                       textcoords="offset points", xytext=(15, 5),
-                       fontsize=10, fontweight="bold", color=color,
-                       bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8))
+    for name, elev_target, lon, lat, color, marker in stake_info:
+        ax.plot(lon, lat, marker=marker, ms=14, color=color,
+                markeredgecolor="k", markeredgewidth=1.5, zorder=10)
+        ax.annotate(f"{name}\n({elev_target} m)", (lon, lat),
+                   textcoords="offset points", xytext=(15, 5),
+                   fontsize=10, fontweight="bold", color=color,
+                   bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8))
 
     # Nuka SNOTEL annotation (off-map, NW direction)
     ax.annotate("Nuka SNOTEL\n375 m, ~10 km NW",
