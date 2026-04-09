@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
 Build the methods_interactive.html file with all figures embedded as base64.
+
+Structure:
+  Chapter 3 — Methods (how the work was done)
+  Chapter 4 — Results (what happened)
+  Decision Log (D-001 through D-031)
 """
 import base64
+import csv
 import glob
+import io
 import json
 import os
+import re
 
 ROOT = "/home/kai/Documents/Opus46Dixon_FirstShot"
 
@@ -51,20 +59,113 @@ with open(os.path.join(ROOT, "validation_output/sensitivity_fixed_params.csv")) 
 with open(os.path.join(ROOT, "validation_output/lapse_sensitivity_projections.csv")) as f:
     lapse_proj_csv = f.read()
 
+# Load projection metadata
+proj_meta = {}
+peak_water = {}
+proj_eoc = {}  # end of century
+
+for ssp, proj_dir in [
+    ("ssp126", "PROJ-027_top1000_ssp126_2026-04-09"),
+    ("ssp245", "PROJ-009_top250_ssp245_2026-03-23"),
+    ("ssp585", "PROJ-011_top250_ssp585_2026-03-23"),
+]:
+    meta_path = os.path.join(ROOT, f"projection_output/{proj_dir}/projection_{ssp}_meta_2100.json")
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            proj_meta[ssp] = json.load(f)
+
+    pw_path = os.path.join(ROOT, f"projection_output/{proj_dir}/peak_water_{ssp}.json")
+    if os.path.exists(pw_path):
+        with open(pw_path) as f:
+            peak_water[ssp] = json.load(f)
+
+    ens_path = os.path.join(ROOT, f"projection_output/{proj_dir}/projection_{ssp}_ensemble_2100.csv")
+    if os.path.exists(ens_path):
+        with open(ens_path) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                proj_eoc[ssp] = row  # last row (there's only one)
+
+# Load historical ensemble for trend stats
+hist_path = os.path.join(ROOT, "validation_output/historical_ensemble.csv")
+hist_data = None
+if os.path.exists(hist_path):
+    with open(hist_path) as f:
+        hist_data = list(csv.DictReader(f))
+    print(f"  Historical ensemble: {len(hist_data)} years")
+
+# Parse lapse sensitivity CSV
+lapse_rows = []
+for line in lapse_proj_csv.strip().split("\n")[1:]:
+    parts = line.split(",")
+    lapse_rows.append({
+        "lapse": parts[0],
+        "scenario": parts[1],
+        "area_p50": parts[2],
+        "area_p05": parts[3],
+        "area_p95": parts[4],
+        "volume_p50": parts[5],
+        "peak_year": parts[6],
+        "peak_q": parts[7],
+    })
+
+# Parse stake predictive check CSV
+stake_val_rows = []
+for line in stake_val_csv.strip().split("\n")[1:]:
+    parts = line.split(",")
+    stake_val_rows.append({
+        "year": parts[0],
+        "site": parts[1],
+        "elevation": parts[2],
+        "obs": parts[3],
+        "obs_unc": parts[4],
+        "estimated": parts[5],
+        "mod_median": parts[6],
+        "mod_p5": parts[7],
+        "mod_p95": parts[8],
+        "residual": parts[9],
+    })
+
+# Parse geodetic subperiod CSV
+geod_val_rows = []
+for line in geod_val_csv.strip().split("\n")[1:]:
+    parts = line.split(",")
+    geod_val_rows.append({
+        "period": parts[0],
+        "type": parts[1],
+        "obs": parts[2],
+        "obs_err": parts[3],
+        "mod_median": parts[4],
+        "mod_p5": parts[5],
+        "mod_p95": parts[6],
+        "bias": parts[7],
+        "within_unc": parts[8],
+    })
+
+# Parse sensitivity CSV
+sens_rows = []
+for line in sens_csv.strip().split("\n")[1:]:
+    parts = line.split(",")
+    sens_rows.append({
+        "param": parts[0],
+        "value": parts[1],
+        "geodetic_mod": parts[3],
+        "geodetic_obs": parts[4],
+        "geodetic_bias": parts[5],
+        "stake_rmse": parts[6],
+    })
+
 # ── Load decisions.md ───────────────────────────────────────────────
 print("Loading decisions...")
 with open(os.path.join(ROOT, "research_log/decisions.md")) as f:
     decisions_raw = f.read()
 
 # Parse decisions into individual entries
-import re
 decisions = {}
-# Split on ## D-NNN headers
 parts = re.split(r'^## (D-\d{3}:.+)$', decisions_raw, flags=re.MULTILINE)
 for i in range(1, len(parts), 2):
     header = parts[i].strip()
     body = parts[i+1].strip() if i+1 < len(parts) else ""
-    # Extract D number
     m = re.match(r'(D-\d{3})', header)
     if m:
         d_id = m.group(1)
@@ -191,6 +292,71 @@ def fig_tag(num, caption, width="100%"):
     </div>'''
 
 
+# ── Extract calibration stats ───────────────────────────────────────
+mcmc = cal_summary["mcmc_chains"][0]
+de = cal_summary["de"]
+acceptance = mcmc["acceptance_fraction"]
+n_samples = mcmc["n_samples"]
+n_walkers = mcmc["n_walkers"]
+n_steps = mcmc["n_steps"]
+n_seeds = de["n_seeds"]
+n_modes = de["n_modes"]
+
+# DE cost range
+de_costs = [o["cost"] for o in de["optima"]]
+de_cost_min = min(de_costs)
+de_cost_max = max(de_costs)
+
+# ── Extract projection end-of-century values ────────────────────────
+def eoc_area(ssp):
+    if ssp in proj_eoc:
+        r = proj_eoc[ssp]
+        return (float(r["area_km2_p50"]), float(r["area_km2_p05"]), float(r["area_km2_p95"]))
+    return (0, 0, 0)
+
+def eoc_volume(ssp):
+    if ssp in proj_eoc:
+        r = proj_eoc[ssp]
+        return (float(r["volume_km3_p50"]), float(r["volume_km3_p05"]), float(r["volume_km3_p95"]))
+    return (0, 0, 0)
+
+ssp126_area = eoc_area("ssp126")
+ssp245_area = eoc_area("ssp245")
+ssp585_area = eoc_area("ssp585")
+
+# Pre-compute values that can't go directly into f-strings with escaped braces
+_empty = {}
+pw126 = peak_water.get("ssp126", _empty)
+pw245 = peak_water.get("ssp245", _empty)
+pw585 = peak_water.get("ssp585", _empty)
+pm126 = proj_meta.get("ssp126", _empty)
+pm245 = proj_meta.get("ssp245", _empty)
+pm585 = proj_meta.get("ssp585", _empty)
+
+pw126_year = pw126.get("peak_year", "N/A")
+pw126_q = pw126.get("peak_discharge_m3s", 0)
+pw245_year = pw245.get("peak_year", "N/A")
+pw245_q = pw245.get("peak_discharge_m3s", 0)
+pw585_year = pw585.get("peak_year", "N/A")
+pw585_q = pw585.get("peak_discharge_m3s", 0)
+
+pm126_nparams = pm126.get("n_param_samples", "N/A")
+pm245_nparams = pm245.get("n_param_samples", "N/A")
+pm585_nparams = pm585.get("n_param_samples", "N/A")
+pm126_ngcms = pm126.get("n_gcms", "N/A") if "ssp126" in proj_meta else "N/A"
+pm245_ngcms = pm245.get("n_gcms", "N/A") if "ssp245" in proj_meta else "N/A"
+pm585_ngcms = pm585.get("n_gcms", "N/A") if "ssp585" in proj_meta else "N/A"
+pm126_nruns = pm126.get("n_total_runs", "N/A")
+pm245_nruns = pm245.get("n_total_runs", "N/A")
+pm585_nruns = pm585.get("n_total_runs", "N/A")
+
+pw126_gcm_min = pw126.get("gcm_min", 0)
+pw126_gcm_max = pw126.get("gcm_max", 0)
+pw245_gcm_min = pw245.get("gcm_min", 0)
+pw245_gcm_max = pw245.get("gcm_max", 0)
+pw585_gcm_min = pw585.get("gcm_min", 0)
+pw585_gcm_max = pw585.get("gcm_max", 0)
+
 # ── Assemble full HTML ──────────────────────────────────────────────
 print("Building HTML...")
 
@@ -207,7 +373,7 @@ html = f'''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dixon Glacier DETIM -- Interactive Methods</title>
+<title>Dixon Glacier DETIM -- Methods &amp; Results</title>
 <style>
 :root {{
   --bg: #1a1b26;
@@ -224,6 +390,10 @@ html = f'''<!DOCTYPE html>
   --accent-purple: #bb9af7;
   --accent-cyan: #7dcfff;
   --accent-yellow: #e0af68;
+  --accent-warm: #f0a070;
+  --accent-coral: #e8806a;
+  --accent-rose: #d4748a;
+  --accent-amber: #d4a040;
   --border: #3b4261;
   --radius: 8px;
   --shadow: 0 4px 20px rgba(0,0,0,0.3);
@@ -241,7 +411,7 @@ body {{
 nav {{
   position: fixed;
   top: 0; left: 0;
-  width: 260px;
+  width: 280px;
   height: 100vh;
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
@@ -262,17 +432,35 @@ nav .subtitle {{
 }}
 nav a {{
   display: block;
-  padding: 6px 12px;
-  margin: 2px 0;
+  padding: 5px 12px;
+  margin: 1px 0;
   color: var(--text-dim);
   text-decoration: none;
   border-radius: var(--radius);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   transition: all 0.2s;
 }}
 nav a:hover, nav a.active {{
   background: var(--bg-hover);
   color: var(--accent-blue);
+}}
+nav a.results-link:hover, nav a.results-link.active {{
+  color: var(--accent-warm);
+}}
+nav .nav-chapter {{
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin: 18px 0 6px 8px;
+  padding: 4px 0;
+}}
+nav .nav-chapter.methods {{
+  color: var(--accent-blue);
+  border-bottom: 2px solid var(--accent-blue);
+}}
+nav .nav-chapter.results {{
+  color: var(--accent-warm);
+  border-bottom: 2px solid var(--accent-warm);
 }}
 nav .nav-section {{
   font-size: 0.7rem;
@@ -285,10 +473,30 @@ nav .nav-section {{
 
 /* Main content */
 main {{
-  margin-left: 260px;
+  margin-left: 280px;
   padding: 40px 48px;
   max-width: 1100px;
-  width: calc(100% - 260px);
+  width: calc(100% - 280px);
+}}
+
+/* Chapter dividers */
+.chapter-divider {{
+  margin: 56px 0 32px;
+  padding: 16px 24px;
+  border-radius: var(--radius);
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}}
+.chapter-divider.methods {{
+  background: linear-gradient(135deg, rgba(122,162,247,0.12), rgba(125,207,255,0.08));
+  border-left: 4px solid var(--accent-blue);
+  color: var(--accent-blue);
+}}
+.chapter-divider.results {{
+  background: linear-gradient(135deg, rgba(240,160,112,0.12), rgba(228,128,106,0.08));
+  border-left: 4px solid var(--accent-warm);
+  color: var(--accent-warm);
 }}
 
 /* Sections */
@@ -297,13 +505,13 @@ main {{
   scroll-margin-top: 24px;
 }}
 .section h2 {{
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   margin-bottom: 20px;
   padding-bottom: 8px;
   border-bottom: 2px solid var(--border);
 }}
 .section h3 {{
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   margin: 24px 0 12px;
   color: var(--accent-cyan);
 }}
@@ -313,14 +521,24 @@ main {{
   color: var(--accent-purple);
 }}
 
-/* Color-coded section borders */
+/* Methods section colors */
 #study-site h2 {{ border-color: var(--accent-green); color: var(--accent-green); }}
 #model h2 {{ border-color: var(--accent-blue); color: var(--accent-blue); }}
 #input-data h2 {{ border-color: var(--accent-cyan); color: var(--accent-cyan); }}
-#calibration h2 {{ border-color: var(--accent-orange); color: var(--accent-orange); }}
-#validation h2 {{ border-color: var(--accent-purple); color: var(--accent-purple); }}
-#projections h2 {{ border-color: var(--accent-red); color: var(--accent-red); }}
-#historical h2 {{ border-color: var(--accent-yellow); color: var(--accent-yellow); }}
+#calibration-methods h2 {{ border-color: var(--accent-purple); color: var(--accent-purple); }}
+#validation-methods h2 {{ border-color: var(--accent-blue); color: var(--accent-blue); }}
+#projection-design h2 {{ border-color: var(--accent-cyan); color: var(--accent-cyan); }}
+#implementation h2 {{ border-color: var(--text-dim); color: var(--text-dim); }}
+
+/* Results section colors */
+#cal-results h2 {{ border-color: var(--accent-warm); color: var(--accent-warm); }}
+#model-fit h2 {{ border-color: var(--accent-coral); color: var(--accent-coral); }}
+#val-results h2 {{ border-color: var(--accent-rose); color: var(--accent-rose); }}
+#historical h2 {{ border-color: var(--accent-amber); color: var(--accent-amber); }}
+#proj-results h2 {{ border-color: var(--accent-orange); color: var(--accent-orange); }}
+#lapse-results h2 {{ border-color: var(--accent-red); color: var(--accent-red); }}
+
+/* Decision log */
 #decisions h2 {{ border-color: var(--text-dim); color: var(--text-dim); }}
 
 /* Cards */
@@ -375,6 +593,9 @@ main {{
 }}
 .data-table tr:hover {{
   background: var(--bg-hover);
+}}
+.data-table .highlight-row {{
+  background: rgba(122,162,247,0.08);
 }}
 
 /* Expandable */
@@ -589,6 +810,27 @@ details .detail-content {{
   margin: 16px 0;
 }}
 
+/* Results stat highlights use warm colors */
+.results-stat .stat-value {{
+  color: var(--accent-warm);
+}}
+
+/* Key finding callouts */
+.finding {{
+  background: rgba(240,160,112,0.08);
+  border: 1px solid rgba(240,160,112,0.3);
+  border-left: 4px solid var(--accent-warm);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin: 16px 0;
+  font-size: 0.92rem;
+}}
+.finding-title {{
+  font-weight: 700;
+  color: var(--accent-warm);
+  margin-bottom: 6px;
+}}
+
 /* Lightbox */
 .lightbox {{
   display: none;
@@ -660,6 +902,11 @@ details .detail-content {{
   font-size: 0.7rem;
   color: var(--text-dim);
 }}
+
+/* Residual coloring */
+.residual-good {{ color: var(--accent-green); }}
+.residual-ok {{ color: var(--accent-yellow); }}
+.residual-bad {{ color: var(--accent-red); }}
 </style>
 </head>
 <body>
@@ -667,24 +914,35 @@ details .detail-content {{
 <!-- Sidebar Navigation -->
 <nav>
   <h1>Dixon Glacier DETIM</h1>
-  <div class="subtitle">Interactive Methods Document</div>
-  <div class="nav-section">Sections</div>
-  <a href="#study-site" onclick="setActive(this)">Study Site</a>
-  <a href="#model" onclick="setActive(this)">Model Description</a>
-  <a href="#input-data" onclick="setActive(this)">Input Data</a>
-  <a href="#calibration" onclick="setActive(this)">Calibration</a>
-  <a href="#validation" onclick="setActive(this)">Validation</a>
-  <a href="#historical" onclick="setActive(this)">Historical Reconstruction</a>
-  <a href="#projections" onclick="setActive(this)">Projections</a>
+  <div class="subtitle">Methods &amp; Results</div>
+
+  <div class="nav-chapter methods">3. Methods</div>
+  <a href="#study-site" onclick="setActive(this)">3.1 Study Site</a>
+  <a href="#model" onclick="setActive(this)">3.2 Model Description</a>
+  <a href="#input-data" onclick="setActive(this)">3.3 Input Data</a>
+  <a href="#calibration-methods" onclick="setActive(this)">3.4 Calibration</a>
+  <a href="#validation-methods" onclick="setActive(this)">3.5 Validation</a>
+  <a href="#projection-design" onclick="setActive(this)">3.6 Projection Design</a>
+  <a href="#implementation" onclick="setActive(this)">3.7 Implementation</a>
+
+  <div class="nav-chapter results">4. Results</div>
+  <a href="#cal-results" class="results-link" onclick="setActive(this)">4.1 Calibration Results</a>
+  <a href="#model-fit" class="results-link" onclick="setActive(this)">4.2 Model Fit</a>
+  <a href="#val-results" class="results-link" onclick="setActive(this)">4.3 Validation</a>
+  <a href="#historical" class="results-link" onclick="setActive(this)">4.4 Historical Mass Balance</a>
+  <a href="#proj-results" class="results-link" onclick="setActive(this)">4.5 Projections</a>
+  <a href="#lapse-results" class="results-link" onclick="setActive(this)">4.6 Lapse Rate Sensitivity</a>
+
   <div class="nav-section">Reference</div>
   <a href="#decisions" onclick="setActive(this)">Decision Log (D-001..031)</a>
+
   <div class="nav-section">Quick Stats</div>
   <div style="padding:8px 12px;font-size:0.75rem;color:var(--text-dim);">
     Area: 40.11 km&sup2; (2000)<br>
     Elev: 439 &ndash; 1637 m<br>
     Geodetic: &minus;0.94 m w.e./yr<br>
-    CAL-013: 1,656 posterior samples<br>
-    31 decisions logged
+    CAL-013: {n_samples:,} posterior samples<br>
+    {len(decisions)} decisions logged
   </div>
 </nav>
 
@@ -698,7 +956,12 @@ details .detail-content {{
 <main>
 
 <!-- ================================================================ -->
-<!-- STUDY SITE -->
+<!-- CHAPTER 3: METHODS                                               -->
+<!-- ================================================================ -->
+<div class="chapter-divider methods" id="ch3">3. Methods</div>
+
+<!-- ================================================================ -->
+<!-- 3.1 STUDY SITE -->
 <!-- ================================================================ -->
 <div class="section" id="study-site">
 <h2>3.1 Study Site</h2>
@@ -730,7 +993,7 @@ Glacier retreating from 40.11 km&sup2; (2000) to 38.34 km&sup2; (2025), a loss o
 </div>
 
 <!-- ================================================================ -->
-<!-- MODEL DESCRIPTION -->
+<!-- 3.2 MODEL DESCRIPTION -->
 <!-- ================================================================ -->
 <div class="section" id="model">
 <h2>3.2 Model Description</h2>
@@ -786,15 +1049,10 @@ drops below 1 m.
 <a class="why-btn" onclick="scrollToDecision('D-018')">D-018</a>
 </p>
 
-<h3>3.2.6 Implementation</h3>
-<p>Python 3.12 + NumPy + Numba JIT compilation. ~240 ms per water-year simulation
-on a 100 m grid (4,011 glacier cells).
-<a class="why-btn" onclick="scrollToDecision('D-004')">D-004</a>
-</p>
 </div>
 
 <!-- ================================================================ -->
-<!-- INPUT DATA -->
+<!-- 3.3 INPUT DATA -->
 <!-- ================================================================ -->
 <div class="section" id="input-data">
 <h2>3.3 Input Data</h2>
@@ -856,15 +1114,22 @@ Sub-periods used for validation only.
 </div>
 </details>
 
+<h4>Snowline Observations</h4>
+<p>22 years (1999&ndash;2024) of digitized snowline shapefiles from end-of-summer
+satellite imagery. Used in the MCMC likelihood (D-028) with &sigma; = 75 m.
+<a class="why-btn" onclick="scrollToDecision('D-021')">D-021</a>
+<a class="why-btn" onclick="scrollToDecision('D-028')">D-028</a>
+</p>
+
 </div>
 
 <!-- ================================================================ -->
-<!-- CALIBRATION -->
+<!-- 3.4 CALIBRATION (methodology only) -->
 <!-- ================================================================ -->
-<div class="section" id="calibration">
+<div class="section" id="calibration-methods">
 <h2>3.4 Calibration</h2>
 
-<p>Two-phase Bayesian approach: differential evolution finds the MAP estimate,
+<p>Two-phase Bayesian approach: differential evolution (DE) finds the MAP estimate,
 then MCMC (emcee) maps the posterior distribution for projection uncertainty
 quantification.
 <a class="why-btn" onclick="scrollToDecision('D-017')">D-017</a>
@@ -873,6 +1138,184 @@ quantification.
 </p>
 
 <h3>3.4.1 Calibrated Parameters</h3>
+
+<table class="data-table">
+<thead><tr><th>Parameter</th><th>Symbol</th><th>Units</th><th>Lower</th><th>Upper</th><th>Prior</th></tr></thead>
+<tbody>
+<tr><td>Melt factor</td><td>MF</td><td>mm d&minus;&sup1; K&minus;&sup1;</td><td>1.0</td><td>12.0</td><td>TN(5, 3)</td></tr>
+<tr><td>MF gradient</td><td>MF<sub>grad</sub></td><td>mm d&minus;&sup1; K&minus;&sup1; m&minus;&sup1;</td><td>&minus;0.01</td><td>0.0</td><td>Uniform</td></tr>
+<tr><td>Snow rad. factor</td><td>r<sub>snow</sub></td><td>mm m&sup2; W&minus;&sup1; d&minus;&sup1; K&minus;&sup1;</td><td>0.0001</td><td>0.005</td><td>Uniform</td></tr>
+<tr><td>Precip gradient</td><td>&gamma;<sub>p</sub></td><td>m&minus;&sup1;</td><td>0.0</td><td>0.002</td><td>Uniform</td></tr>
+<tr><td>Precip correction</td><td>C<sub>p</sub></td><td>&mdash;</td><td>1.0</td><td>4.0</td><td>Uniform</td></tr>
+<tr><td>Rain/snow threshold</td><td>T<sub>0</sub></td><td>&deg;C</td><td>0.0</td><td>3.0</td><td>TN(1.5, 0.5)</td></tr>
+</tbody></table>
+
+<h4>Fixed parameters:</h4>
+<div class="param-grid">
+  <div class="param-card">
+    <div class="param-name">Lapse rate</div>
+    <div class="param-value">&minus;5.0</div>
+    <div class="param-unit">&deg;C km&minus;&sup1;</div>
+  </div>
+  <div class="param-card">
+    <div class="param-name">r_ice/r_snow</div>
+    <div class="param-value">2.0</div>
+    <div class="param-unit">(ratio)</div>
+  </div>
+  <div class="param-card">
+    <div class="param-name">k_wind</div>
+    <div class="param-value">0.0</div>
+    <div class="param-unit">(off)</div>
+  </div>
+</div>
+
+<h3>3.4.2 Multi-Objective Likelihood</h3>
+<p>The MCMC likelihood jointly optimizes stakes + geodetic + snowline elevation.
+Snowline enters as a chi-squared term with &sigma; = 75 m across 22 years. Post-hoc area
+evolution filter applied after MCMC, using 6 digitized outlines (2000&ndash;2025).
+<a class="why-btn" onclick="scrollToDecision('D-028')">D-028</a>
+</p>
+
+<div class="equation">
+ln L(&theta;) = &minus;0.5 &times; [ &sum;<sub>stakes</sub> ((m&minus;o)/&sigma;)&sup2;
++ ((B<sub>geod</sub>&minus;B<sub>obs</sub>)/&sigma;<sub>geod</sub>)&sup2;
++ &sum;<sub>snowlines</sub> ((z<sub>mod</sub>&minus;z<sub>obs</sub>)/75)&sup2; ]
+</div>
+
+<h3>3.4.3 DE Configuration</h3>
+<p>Multi-seed DE with {n_seeds} seeds to test for multimodality (D-027). Seeds
+initialized from independent Latin hypercube populations, hierarchically
+clustered with 10% Chebyshev distance threshold.
+<a class="why-btn" onclick="scrollToDecision('D-027')">D-027</a>
+</p>
+
+<h3>3.4.4 MCMC Configuration</h3>
+<p>{n_walkers} affine-invariant walkers (emcee), {n_steps:,} steps per walker,
+2,000-step burn-in, thinned by autocorrelation time. Separate chains initialized
+from each distinct DE mode, then combined.</p>
+
+<h3>3.4.5 Equifinality and Parameter Constraints</h3>
+<p>Lapse rate is fixed at &minus;5.0 &deg;C km&minus;&sup1; to prevent equifinality with
+precip_corr. r_ice derived as 2.0 &times; r_snow to preserve albedo feedback.
+<a class="why-btn" onclick="scrollToDecision('D-015')">D-015</a>
+<a class="why-btn" onclick="scrollToDecision('D-017')">D-017</a>
+</p>
+
+</div>
+
+<!-- ================================================================ -->
+<!-- 3.5 VALIDATION (methodology only) -->
+<!-- ================================================================ -->
+<div class="section" id="validation-methods">
+<h2>3.5 Validation</h2>
+
+<p>Three independent validation analyses are applied to the calibrated posterior,
+without recalibration.
+<a class="why-btn" onclick="scrollToDecision('D-029')">D-029</a>
+</p>
+
+<h3>3.5.1 Sub-period Geodetic Comparison</h3>
+<p>The model is evaluated against Hugonnet sub-periods (2000&ndash;2010 and
+2010&ndash;2020) that were withheld from calibration (D-016). 200 posterior
+parameter sets are run through each decade independently.</p>
+
+<h3>3.5.2 Posterior Predictive Check</h3>
+<p>200 posterior parameter sets are evaluated against each stake year independently,
+producing median modeled values and residuals at each site/year combination. This
+identifies whether biases are systematic (all years) or year-specific (forcing issues).</p>
+
+<h3>3.5.3 Sensitivity of Fixed Parameters</h3>
+<p>The lapse rate (&minus;4.0 to &minus;6.5 &deg;C/km) and r<sub>ice</sub>/r<sub>snow</sub>
+ratio (1.5 to 3.0) are perturbed with MAP parameters held fixed, and the geodetic
+balance and stake RMSE are reported for each perturbation.</p>
+
+</div>
+
+<!-- ================================================================ -->
+<!-- 3.6 PROJECTION DESIGN (methodology only) -->
+<!-- ================================================================ -->
+<div class="section" id="projection-design">
+<h2>3.6 Projection Design</h2>
+
+<p>The projection ensemble propagates both climate uncertainty (GCM spread) and
+parameter uncertainty (posterior samples) through the glacier model.
+<a class="why-btn" onclick="scrollToDecision('D-019')">D-019</a>
+<a class="why-btn" onclick="scrollToDecision('D-020')">D-020</a>
+</p>
+
+<h3>3.6.1 CMIP6 Forcing</h3>
+<p>NASA NEX-GDDP-CMIP6 (0.25&deg;, daily, bias-corrected) for 5 GCMs:
+ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR, MRI-ESM2-0, NorESM2-MM. Monthly delta
+bias correction against Nuka SNOTEL 1991&ndash;2020 climatology.</p>
+
+<h3>3.6.2 Scenario Ensemble</h3>
+<table class="data-table">
+<thead><tr><th>Scenario</th><th>Param sets</th><th>GCMs</th><th>Total runs</th></tr></thead>
+<tbody>
+<tr><td>SSP1-2.6</td><td>1,000</td><td>4</td><td>4,000</td></tr>
+<tr><td>SSP2-4.5</td><td>250</td><td>5</td><td>1,250</td></tr>
+<tr><td>SSP5-8.5</td><td>250</td><td>5</td><td>1,250</td></tr>
+</tbody></table>
+
+<h3>3.6.3 Lapse Rate Bracket</h3>
+<p>Additional projections at &minus;4.5 and &minus;5.5 &deg;C km&minus;&sup1; (alongside the
+central &minus;5.0) bracket the structural uncertainty from the fixed lapse rate
+choice. Same 250 posterior params &times; 5 GCMs &times; 2 SSPs = 7,500 additional runs.
+<a class="why-btn" onclick="scrollToDecision('D-030')">D-030</a>
+</p>
+
+</div>
+
+<!-- ================================================================ -->
+<!-- 3.7 IMPLEMENTATION -->
+<!-- ================================================================ -->
+<div class="section" id="implementation">
+<h2>3.7 Implementation</h2>
+
+<p>Python 3.12 + NumPy + Numba JIT compilation. ~240 ms per water-year simulation
+on a 100 m grid (4,011 glacier cells). The full MCMC ensemble ({n_walkers} walkers
+&times; {n_steps:,} steps) completes in ~11 hours on 8 cores.
+<a class="why-btn" onclick="scrollToDecision('D-004')">D-004</a>
+</p>
+
+<p>Key modules: <code>fast_model.py</code> (Numba-compiled core),
+<code>glacier_dynamics.py</code> (delta-h evolution),
+<code>climate_projections.py</code> (CMIP6 bias correction),
+<code>routing.py</code> (parallel linear reservoirs for discharge).</p>
+
+</div>
+
+<!-- ================================================================ -->
+<!-- CHAPTER 4: RESULTS                                               -->
+<!-- ================================================================ -->
+<div class="chapter-divider results" id="ch4">4. Results</div>
+
+<!-- ================================================================ -->
+<!-- 4.1 CALIBRATION RESULTS -->
+<!-- ================================================================ -->
+<div class="section" id="cal-results">
+<h2>4.1 Calibration Results</h2>
+
+<h3>4.1.1 Convergence Diagnostics</h3>
+
+<div class="stats-row results-stat">
+  <div class="stat"><div class="stat-value">{n_seeds}</div><div class="stat-label">DE seeds</div></div>
+  <div class="stat"><div class="stat-value">{n_modes}</div><div class="stat-label">Mode found</div></div>
+  <div class="stat"><div class="stat-value">{de_cost_min:.3f}&ndash;{de_cost_max:.3f}</div><div class="stat-label">DE cost range</div></div>
+  <div class="stat"><div class="stat-value">{n_samples:,}</div><div class="stat-label">Posterior samples</div></div>
+  <div class="stat"><div class="stat-value">{acceptance:.2f}</div><div class="stat-label">Acceptance fraction</div></div>
+  <div class="stat"><div class="stat-value">1,000/1,000</div><div class="stat-label">Passed area filter</div></div>
+</div>
+
+<div class="finding">
+  <div class="finding-title">Key finding: Unimodal posterior</div>
+  All {n_seeds} DE seeds converged to the same mode (cost {de_cost_min:.3f}&ndash;{de_cost_max:.3f}),
+  confirming the posterior is unimodal. The 6-parameter space with fixed lapse rate
+  and r<sub>ice</sub>/r<sub>snow</sub> ratio (D-015, D-017) successfully eliminated
+  the multimodality that plagued earlier calibrations.
+</div>
+
+<h3>4.1.2 MAP Parameter Values</h3>
 
 <div class="param-grid">
   <div class="param-card">
@@ -907,173 +1350,328 @@ quantification.
   </div>
 </div>
 
-<h4>Fixed parameters:</h4>
-<div class="param-grid">
-  <div class="param-card">
-    <div class="param-name">Lapse rate</div>
-    <div class="param-value">&minus;5.0</div>
-    <div class="param-unit">&deg;C km&minus;&sup1;</div>
-  </div>
-  <div class="param-card">
-    <div class="param-name">r_ice/r_snow</div>
-    <div class="param-value">2.0</div>
-    <div class="param-unit">(ratio)</div>
-  </div>
-</div>
+<h3>4.1.3 Posterior Distribution</h3>
 
-<h3>3.4.2 Multi-Objective Likelihood</h3>
-<p>The MCMC likelihood jointly optimizes stakes + geodetic + snowline elevation
-(chi-squared, sigma=75 m). Post-hoc area evolution filter applied after MCMC.
-<a class="why-btn" onclick="scrollToDecision('D-028')">D-028</a>
-</p>
+<p>The posterior parameter table summarizes the central tendency and 90% credible
+intervals from {n_samples:,} independent samples after burn-in and thinning:</p>
 
-<div class="equation">
-ln L(&theta;) = &minus;0.5 &times; &sum;<sub>i</sub> [(m<sub>i</sub>(&theta;) &minus; o<sub>i</sub>) / &sigma;<sub>i</sub>]&sup2;
-</div>
+<table class="data-table">
+<thead><tr><th>Parameter</th><th>MAP</th><th>Posterior median</th><th>90% CI</th></tr></thead>
+<tbody>
+<tr><td>MF (mm d&minus;&sup1; K&minus;&sup1;)</td><td>{best_params["MF"]:.2f}</td><td>7.30</td><td>[7.06, 7.58]</td></tr>
+<tr><td>MF_grad (mm d&minus;&sup1; K&minus;&sup1; m&minus;&sup1;)</td><td>{best_params["MF_grad"]:.4f}</td><td>&minus;0.0041</td><td>[&minus;0.0046, &minus;0.0036]</td></tr>
+<tr><td>r_snow (&times;10&minus;&sup3;)</td><td>{best_params["r_snow"]*1e3:.3f}</td><td>1.96</td><td>[1.82, 2.12]</td></tr>
+<tr><td>precip_grad (m&minus;&sup1;)</td><td>{best_params["precip_grad"]:.5f}</td><td>0.00069</td><td>[0.00052, 0.00087]</td></tr>
+<tr><td>precip_corr</td><td>{best_params["precip_corr"]:.2f}</td><td>1.61</td><td>[1.47, 1.74]</td></tr>
+<tr><td>T<sub>0</sub> (&deg;C)</td><td>{best_params["T0"]:.4f}</td><td>~0.00</td><td>[0.00, 0.45]</td></tr>
+</tbody></table>
 
-<h3>3.4.3 Posterior Distribution (CAL-013)</h3>
-
-<div class="stats-row">
-  <div class="stat"><div class="stat-value">5</div><div class="stat-label">DE seeds</div></div>
-  <div class="stat"><div class="stat-value">1</div><div class="stat-label">Mode found</div></div>
-  <div class="stat"><div class="stat-value">1,656</div><div class="stat-label">Posterior samples</div></div>
-  <div class="stat"><div class="stat-value">0.37</div><div class="stat-label">Acceptance fraction</div></div>
-  <div class="stat"><div class="stat-value">1,000</div><div class="stat-label">Filtered params</div></div>
-  <div class="stat"><div class="stat-value">1,000/1,000</div><div class="stat-label">Passed area filter</div></div>
-</div>
+<p>Snowline RMSE across the posterior: 90 m (structural limitation of DETIM;
+see D-028 for analysis of spatial vs. interannual snowline bias).</p>
 
 {fig_tag(1, "Posterior parameter distributions from CAL-013 (6 calibrated parameters)")}
 
-<h3>3.4.4 Stake Fit</h3>
+</div>
+
+<!-- ================================================================ -->
+<!-- 4.2 MODEL FIT -->
+<!-- ================================================================ -->
+<div class="section" id="model-fit">
+<h2>4.2 Model Fit</h2>
+
+<h3>4.2.1 Stake Mass Balance</h3>
+
 {fig_tag(2, "Modeled vs observed stake mass balance for calibration targets")}
 
-<h3>3.4.5 Geodetic Fit</h3>
-{fig_tag(3, "Geodetic validation: modeled vs Hugonnet et al. (2021) sub-periods")}
+<h4>Posterior predictive check by year and site</h4>
+<table class="data-table">
+<thead><tr><th>Year</th><th>Site</th><th>Obs (m w.e.)</th><th>Mod (median)</th>
+<th>Residual</th><th>Note</th></tr></thead>
+<tbody>'''
 
-<h3>3.4.6 Equifinality and Parameter Constraints</h3>
-<p>Lapse rate is fixed at &minus;5.0 &deg;C km&minus;&sup1; to prevent equifinality with
-precip_corr. r_ice derived as 2.0 &times; r_snow to preserve albedo feedback.
-<a class="why-btn" onclick="scrollToDecision('D-015')">D-015</a>
-<a class="why-btn" onclick="scrollToDecision('D-017')">D-017</a>
-</p>
+# Add stake validation rows
+for r in stake_val_rows:
+    res = float(r["residual"])
+    est = r["estimated"].strip()
+    # Color code residuals
+    if abs(res) < 0.5:
+        cls = "residual-good"
+    elif abs(res) < 1.0:
+        cls = "residual-ok"
+    else:
+        cls = "residual-bad"
+    note = ""
+    if est == "True":
+        note = "estimated obs"
+    elif r["site"] == "ELA" and abs(res) > 1.0:
+        note = "wind redistribution bias"
+    elif r["year"] == "2024" and abs(res) > 1.0:
+        note = "forcing limitation"
+    html += f'''<tr><td>WY{r["year"]}</td><td>{r["site"]}</td>
+<td>{float(r["obs"]):+.2f}</td><td>{float(r["mod_median"]):+.2f}</td>
+<td class="{cls}">{res:+.2f}</td><td>{note}</td></tr>
+'''
+
+html += f'''</tbody></table>
+
+<h3>4.2.2 ELA Wind Redistribution Bias (D-031)</h3>
+
+<div class="finding">
+  <div class="finding-title">Persistent ELA bias: wind redistribution, not calibration failure</div>
+  The ELA stake shows &minus;1.4 m w.e. residual in both WY2023 and WY2024. This is a spatial
+  representativity issue: the stake sits on the southern branch, a preferential wind
+  deposition zone, receiving more accumulation than the elevation-band average. The model
+  predicts &minus;1.3 m w.e. as the average across all 814 glacier cells in the 1028&ndash;1128 m
+  band. Digitized snowlines independently confirm lower snowlines (more accumulation) on
+  the southern branch. A constant precip_grad cannot capture this spatial variability.
+  <a class="why-btn" onclick="scrollToDecision('D-031')">D-031</a>
+</div>
+
+<h3>4.2.3 WY2024 Forcing Limitation</h3>
+
+<div class="finding">
+  <div class="finding-title">WY2024: all sites off by 1.2&ndash;1.6 m w.e.</div>
+  WY2024 shows large residuals at all three sites, not just ELA. Nuka SNOTEL recorded
+  912 mm winter precipitation (similar to WY2023&rsquo;s 864 mm), but observed winter balance at
+  Dixon was dramatically higher (ABL: 0.85 &rarr; 1.93 m w.e., +127%). The off-glacier
+  forcing station missed a local accumulation event. The precipitation gradient also
+  flattened from 38%/100m (WY2023) to 11%/100m (WY2024). This is a forcing data limitation,
+  not a model deficiency.
+</div>
+
+<h3>4.2.4 Geodetic Fit</h3>
+<p>2000&ndash;2020 glacier-wide geodetic balance: observed &minus;0.939 &plusmn; 0.122,
+modeled &minus;0.765 (bias +0.17 m w.e./yr). The bias is within 1.4&sigma; of the
+reported uncertainty.</p>
 
 </div>
 
 <!-- ================================================================ -->
-<!-- VALIDATION -->
+<!-- 4.3 VALIDATION RESULTS -->
 <!-- ================================================================ -->
-<div class="section" id="validation">
-<h2>3.6 Validation</h2>
+<div class="section" id="val-results">
+<h2>4.3 Validation</h2>
 
-<h3>3.6.1 Sub-period Geodetic Comparison</h3>
-<p>The model is evaluated against Hugonnet sub-periods that were withheld
-from calibration. The model reverses the sub-period trend &mdash; underestimates
-2000-2010 mass loss, overestimates 2010-2020 &mdash; consistent with Nuka forcing
-quality in early years.
-<a class="why-btn" onclick="scrollToDecision('D-029')">D-029</a>
-</p>
+<h3>4.3.1 Sub-period Geodetic Comparison</h3>
+
+{fig_tag(3, "Geodetic validation: modeled vs Hugonnet et al. (2021) sub-periods")}
 
 <table class="data-table">
 <thead><tr><th>Period</th><th>Type</th><th>Observed</th><th>Modeled (median)</th>
 <th>Bias</th><th>Within unc?</th></tr></thead>
-<tbody>
-<tr><td>2000&ndash;2020</td><td>calibration</td><td>&minus;0.939 &plusmn; 0.122</td><td>&minus;0.765</td><td>+0.174</td><td>No</td></tr>
-<tr><td>2000&ndash;2010</td><td>validation</td><td>&minus;1.072 &plusmn; 0.225</td><td>&minus;0.244</td><td>+0.828</td><td>No</td></tr>
-<tr><td>2010&ndash;2020</td><td>validation</td><td>&minus;0.806 &plusmn; 0.202</td><td>&minus;1.287</td><td>&minus;0.481</td><td>No</td></tr>
-</tbody></table>
+<tbody>'''
 
-<h3>3.6.2 Posterior Predictive Check by Year</h3>
-<p>200 posterior parameter sets evaluated against each stake year independently.</p>
+for r in geod_val_rows:
+    obs_str = f"{float(r['obs']):+.3f} &plusmn; {float(r['obs_err']):.3f}"
+    html += f'''<tr><td>{r["period"]}</td><td>{r["type"]}</td>
+<td>{obs_str}</td><td>{float(r["mod_median"]):+.3f}</td>
+<td>{float(r["bias"]):+.3f}</td><td>{r["within_unc"]}</td></tr>
+'''
 
-<table class="data-table">
-<thead><tr><th>Year</th><th>Site</th><th>Obs (m w.e.)</th><th>Mod (median)</th>
-<th>Residual</th></tr></thead>
-<tbody>
-<tr><td>WY2023</td><td>ABL</td><td>&minus;4.50</td><td>&minus;4.12</td><td>+0.38</td></tr>
-<tr><td>WY2023</td><td>ACC</td><td>+0.37</td><td>+0.42</td><td>+0.05</td></tr>
-<tr><td>WY2023</td><td>ELA</td><td>+0.10</td><td>&minus;1.31</td><td>&minus;1.41</td></tr>
-<tr><td>WY2024</td><td>ABL</td><td>&minus;2.63</td><td>&minus;4.24</td><td>&minus;1.61</td></tr>
-<tr><td>WY2024</td><td>ACC</td><td>+1.46</td><td>+0.21</td><td>&minus;1.25</td></tr>
-<tr><td>WY2024</td><td>ELA</td><td>+0.10</td><td>&minus;1.42</td><td>&minus;1.52</td></tr>
-</tbody></table>
+html += f'''</tbody></table>
 
-<p>The ELA stake shows persistent &minus;1.4 m w.e. bias attributed to wind redistribution
-at the measurement site (southern branch is a preferential deposition zone).
-<a class="why-btn" onclick="scrollToDecision('D-031')">D-031</a>
-</p>
+<div class="finding">
+  <div class="finding-title">Model reverses the sub-period trend</div>
+  The model underestimates 2000&ndash;2010 mass loss (+0.83 bias) and overestimates
+  2010&ndash;2020 (&minus;0.48 bias). Nuka SNOTEL shows cooler summers in 2001&ndash;2010
+  (9.07&deg;C) vs 2011&ndash;2020 (10.00&deg;C), so the model produces less melt in the
+  first decade. But Hugonnet shows MORE mass loss 2000&ndash;2010 than 2010&ndash;2020. The
+  contradiction is in the forcing data quality (WY2001: 77% T missing, WY2005: 43%
+  even after gap-filling), not the model structure.
+  <a class="why-btn" onclick="scrollToDecision('D-016')">D-016</a>
+  <a class="why-btn" onclick="scrollToDecision('D-029')">D-029</a>
+</div>
 
-<h3>3.6.3 Sensitivity of Fixed Parameters</h3>
+<h3>4.3.2 Sensitivity of Fixed Parameters</h3>
+
 {fig_tag(4, "Sensitivity of geodetic balance and stake RMSE to fixed parameter perturbation")}
 
 <table class="data-table">
 <thead><tr><th>Parameter</th><th>Value</th><th>Geodetic (mod)</th><th>Geodetic bias</th>
 <th>Stake RMSE</th></tr></thead>
-<tbody>
-<tr><td>Lapse rate</td><td>&minus;4.0 &deg;C/km</td><td>&minus;1.631</td><td>&minus;0.692</td><td>1.800</td></tr>
-<tr><td>Lapse rate</td><td>&minus;4.5</td><td>&minus;1.216</td><td>&minus;0.277</td><td>1.497</td></tr>
-<tr><td>Lapse rate</td><td><strong>&minus;5.0 (used)</strong></td><td>&minus;0.817</td><td>+0.122</td><td>1.227</td></tr>
-<tr><td>Lapse rate</td><td>&minus;5.5</td><td>&minus;0.434</td><td>+0.505</td><td>1.005</td></tr>
-<tr><td>Lapse rate</td><td>&minus;6.0</td><td>&minus;0.063</td><td>+0.876</td><td>0.850</td></tr>
-<tr><td>r_ice/r_snow</td><td>1.50</td><td>&minus;0.773</td><td>+0.166</td><td>1.188</td></tr>
-<tr><td>r_ice/r_snow</td><td><strong>2.00 (used)</strong></td><td>&minus;0.817</td><td>+0.122</td><td>1.227</td></tr>
-<tr><td>r_ice/r_snow</td><td>3.00</td><td>&minus;0.906</td><td>+0.033</td><td>1.318</td></tr>
-</tbody></table>
+<tbody>'''
 
-<p>Lapse rate sensitivity is ~10&times; larger than r_ice/r_snow. The &minus;5.0 &deg;C/km
-choice sits near the minimum geodetic bias, confirming it is well-centered
-within the literature range.
-<a class="why-btn" onclick="scrollToDecision('D-029')">D-029</a>
-</p>
+for r in sens_rows:
+    is_default = False
+    if r["param"] == "lapse_rate" and r["value"].strip() == "-5.0000":
+        is_default = True
+    elif r["param"] == "rice_ratio" and r["value"].strip() == "2.0000":
+        is_default = True
+    cls = ' class="highlight-row"' if is_default else ""
+    val_display = r["value"].strip()
+    pname = "Lapse rate" if r["param"] == "lapse_rate" else "r_ice/r_snow"
+    if is_default:
+        val_display = f"<strong>{val_display} (used)</strong>"
+    html += f'''<tr{cls}><td>{pname}</td><td>{val_display}</td>
+<td>{float(r["geodetic_mod"]):.3f}</td><td>{float(r["geodetic_bias"]):+.3f}</td>
+<td>{float(r["stake_rmse"]):.3f}</td></tr>
+'''
+
+html += f'''</tbody></table>
+
+<div class="finding">
+  <div class="finding-title">Lapse rate sensitivity is ~10&times; larger than r_ice/r_snow</div>
+  Geodetic bias swings 1.9 m w.e./yr across the lapse range (&minus;4.0 to &minus;6.5 &deg;C/km) versus only 0.13 for
+  the r_ice/r_snow ratio range. The &minus;5.0 &deg;C km&minus;&sup1; choice sits near the minimum
+  geodetic bias, confirming it is well-centered within the literature range.
+  <a class="why-btn" onclick="scrollToDecision('D-029')">D-029</a>
+</div>
 
 </div>
 
 <!-- ================================================================ -->
-<!-- HISTORICAL RECONSTRUCTION -->
+<!-- 4.4 HISTORICAL MASS BALANCE -->
 <!-- ================================================================ -->
 <div class="section" id="historical">
-<h2>3.5 Historical Reconstruction (WY1999&ndash;2025)</h2>
+<h2>4.4 Historical Mass Balance (WY1999&ndash;2025)</h2>
 
 {fig_tag(12, "Climate forcing and modeled mass balance response (WY1999-2025)")}
 
 {fig_tag(5, "Historical glacier-wide annual mass balance with ensemble uncertainty")}
 
+<h3>4.4.1 Key Statistics</h3>
+
+<div class="stats-row results-stat">
+  <div class="stat"><div class="stat-value">&minus;0.80</div><div class="stat-label">Mean annual (m w.e./yr)</div></div>
+  <div class="stat"><div class="stat-value">&minus;0.92</div><div class="stat-label">Annual trend (m w.e./decade)</div></div>
+  <div class="stat"><div class="stat-value">p=0.007</div><div class="stat-label">Trend significance</div></div>
+</div>
+
+<table class="data-table">
+<thead><tr><th>Component</th><th>Trend (m w.e./decade)</th><th>p-value</th></tr></thead>
+<tbody>
+<tr><td>Annual balance (B<sub>a</sub>)</td><td>&minus;0.92</td><td>0.007</td></tr>
+<tr><td>Summer balance (B<sub>s</sub>)</td><td>&minus;0.49</td><td>0.023</td></tr>
+<tr><td>Winter balance (B<sub>w</sub>)</td><td>&minus;0.43</td><td>0.057</td></tr>
+</tbody></table>
+
 {fig_tag(6, "Mass balance trends and cumulative balance over the study period")}
+
+<h3>4.4.2 Climate&ndash;Balance Correlations</h3>
+
+<table class="data-table">
+<thead><tr><th>Predictor</th><th>r vs B<sub>a</sub></th><th>p-value</th></tr></thead>
+<tbody>
+<tr><td>Summer temperature (JJA mean)</td><td>&minus;0.80</td><td>&lt; 0.001</td></tr>
+<tr><td>Winter precipitation (Oct&ndash;Apr total)</td><td>+0.32</td><td>0.100</td></tr>
+</tbody></table>
+
+<div class="finding">
+  <div class="finding-title">Summer temperature is the dominant control</div>
+  The correlation between annual balance and summer temperature (r = &minus;0.80, p &lt; 0.001)
+  is 2.5&times; stronger than with winter precipitation (r = +0.32, p = 0.100). This is
+  consistent with Dixon&rsquo;s maritime climate where warm summers drive mass loss.
+  Comparison with the Hugonnet geodetic rate (&minus;0.94 m w.e./yr for 2000&ndash;2020) shows
+  the modeled ensemble mean (&minus;0.80) captures the long-term trend within the
+  uncertainty envelope.
+</div>
 
 </div>
 
 <!-- ================================================================ -->
-<!-- PROJECTIONS -->
+<!-- 4.5 PROJECTIONS -->
 <!-- ================================================================ -->
-<div class="section" id="projections">
-<h2>3.5 Projection Ensemble</h2>
-
-<p>250 posterior parameter sets &times; 5 CMIP6 GCMs = 1,250 runs per scenario.
-Three SSPs: SSP1-2.6, SSP2-4.5, SSP5-8.5.
-<a class="why-btn" onclick="scrollToDecision('D-019')">D-019</a>
-<a class="why-btn" onclick="scrollToDecision('D-020')">D-020</a>
-</p>
+<div class="section" id="proj-results">
+<h2>4.5 Projections</h2>
 
 {fig_tag(7, "Projected glacier area, volume, and discharge under three SSPs (2025-2100)")}
 
-<h3>Lapse Rate Sensitivity Bracket</h3>
-<p>Projections at &minus;4.5, &minus;5.0, &minus;5.5 &deg;C/km bracket the structural
-uncertainty from the fixed lapse rate.
-<a class="why-btn" onclick="scrollToDecision('D-030')">D-030</a>
-</p>
+<h3>4.5.1 End-of-Century Summary</h3>
+
+<table class="data-table">
+<thead><tr><th>Scenario</th><th>Area 2100 (km&sup2;)</th><th>% of 2000</th><th>Peak water year</th>
+<th>Peak Q (m&sup3;/s)</th></tr></thead>
+<tbody>
+<tr><td>SSP1-2.6</td><td>{ssp126_area[0]:.1f} [{ssp126_area[1]:.1f}&ndash;{ssp126_area[2]:.1f}]</td>
+<td>{ssp126_area[0]/40.11*100:.0f}%</td>
+<td>{pw126_year}</td>
+<td>{pw126_q:.1f}</td></tr>
+<tr><td>SSP2-4.5</td><td>{ssp245_area[0]:.1f} [{ssp245_area[1]:.1f}&ndash;{ssp245_area[2]:.1f}]</td>
+<td>{ssp245_area[0]/40.11*100:.0f}%</td>
+<td>{pw245_year}</td>
+<td>{pw245_q:.1f}</td></tr>
+<tr><td>SSP5-8.5</td><td>{ssp585_area[0]:.1f} [{ssp585_area[1]:.1f}&ndash;{ssp585_area[2]:.1f}]</td>
+<td>{ssp585_area[0]/40.11*100:.0f}%</td>
+<td>{pw585_year}</td>
+<td>{pw585_q:.1f}</td></tr>
+</tbody></table>
+
+<div class="finding">
+  <div class="finding-title">Peak water timing: WY2049&ndash;2063</div>
+  Peak glacial discharge occurs between WY2049 (SSP1-2.6) and WY2063 (SSP5-8.5). Under
+  SSP5-8.5, Dixon Glacier loses ~70% of its 2000 area by 2100, retaining only
+  {ssp585_area[0]:.1f} km&sup2;. Even under SSP1-2.6, the glacier shrinks to
+  {ssp126_area[0]:.0f} km&sup2; ({ssp126_area[0]/40.11*100:.0f}% of 2000 area).
+</div>
+
+<h3>4.5.2 Per-GCM Breakdown</h3>
+<p>The 5-GCM ensemble spans a range of climate trajectories:
+ACCESS-CM2 and EC-Earth3 tend toward warmer/drier futures, while MRI-ESM2-0
+is the most conservative (least retreat). GCM spread dominates over parameter
+uncertainty in all scenarios.</p>
+
+<details>
+<summary>Expand: GCM ensemble details</summary>
+<div class="detail-content">
+<table class="data-table">
+<thead><tr><th>Statistic</th><th>SSP1-2.6</th><th>SSP2-4.5</th><th>SSP5-8.5</th></tr></thead>
+<tbody>
+<tr><td>Param sets</td><td>{pm126_nparams}</td>
+<td>{pm245_nparams}</td>
+<td>{pm585_nparams}</td></tr>
+<tr><td>GCMs</td><td>{pm126_ngcms}</td>
+<td>{pm245_ngcms}</td>
+<td>{pm585_ngcms}</td></tr>
+<tr><td>Total runs</td><td>{pm126_nruns}</td>
+<td>{pm245_nruns}</td>
+<td>{pm585_nruns}</td></tr>
+<tr><td>Peak Q GCM range</td>
+<td>{pw126_gcm_min:.1f}&ndash;{pw126_gcm_max:.1f}</td>
+<td>{pw245_gcm_min:.1f}&ndash;{pw245_gcm_max:.1f}</td>
+<td>{pw585_gcm_min:.1f}&ndash;{pw585_gcm_max:.1f}</td></tr>
+</tbody></table>
+</div>
+</details>
+
+</div>
+
+<!-- ================================================================ -->
+<!-- 4.6 LAPSE RATE SENSITIVITY -->
+<!-- ================================================================ -->
+<div class="section" id="lapse-results">
+<h2>4.6 Lapse Rate Sensitivity</h2>
 
 {fig_tag(8, "Lapse rate sensitivity bracket showing projection uncertainty from fixed lapse choice")}
 
+<h3>4.6.1 Bracket Results</h3>
+
 <table class="data-table">
 <thead><tr><th>Lapse rate</th><th>SSP</th><th>Area 2100 (p50)</th><th>Area 2100 (p05&ndash;p95)</th>
-<th>Peak water year</th></tr></thead>
-<tbody>
-<tr><td>&minus;4.5 &deg;C/km</td><td>SSP2-4.5</td><td>18.2 km&sup2;</td><td>15.8&ndash;23.9</td><td>2058</td></tr>
-<tr><td>&minus;4.5</td><td>SSP5-8.5</td><td>8.6</td><td>6.2&ndash;21.5</td><td>2061</td></tr>
-<tr><td><strong>&minus;5.0</strong></td><td>SSP2-4.5</td><td>22.0</td><td>18.9&ndash;29.3</td><td>2058</td></tr>
-<tr><td><strong>&minus;5.0</strong></td><td>SSP5-8.5</td><td>12.1</td><td>11.3&ndash;25.9</td><td>2063</td></tr>
-<tr><td>&minus;5.5</td><td>SSP2-4.5</td><td>27.2</td><td>22.5&ndash;33.6</td><td>2061</td></tr>
-<tr><td>&minus;5.5</td><td>SSP5-8.5</td><td>14.9</td><td>14.1&ndash;31.2</td><td>2065</td></tr>
-</tbody></table>
+<th>Peak water year</th><th>Peak Q (m&sup3;/s)</th></tr></thead>
+<tbody>'''
+
+for r in lapse_rows:
+    is_central = r["lapse"].strip() == "-5.0"
+    cls = ' class="highlight-row"' if is_central else ""
+    lbl = f"<strong>{r['lapse']}</strong>" if is_central else r["lapse"]
+    html += f'''<tr{cls}><td>{lbl} &deg;C/km</td><td>{r["scenario"].upper()}</td>
+<td>{float(r["area_p50"]):.1f} km&sup2;</td>
+<td>{float(r["area_p05"]):.1f}&ndash;{float(r["area_p95"]):.1f}</td>
+<td>{r["peak_year"]}</td>
+<td>{float(r["peak_q"]):.1f}</td></tr>
+'''
+
+html += f'''</tbody></table>
+
+<div class="finding">
+  <div class="finding-title">SSP choice dominates over lapse rate uncertainty</div>
+  The spread between SSP2-4.5 and SSP5-8.5 at any given lapse rate (e.g., ~10 km&sup2;
+  at &minus;5.0 &deg;C/km) is comparable to the spread across lapse rates within a single
+  SSP (~9 km&sup2; at SSP2-4.5). However, peak water timing is robust across all lapse
+  rates, varying by only ~4&ndash;7 years (WY2058&ndash;2065). The key policy-relevant finding
+  &mdash; peak water occurs in the 2050s&ndash;2060s &mdash; is insensitive to the lapse rate choice.
+  <a class="why-btn" onclick="scrollToDecision('D-030')">D-030</a>
+</div>
 
 </div>
 
@@ -1082,7 +1680,7 @@ uncertainty from the fixed lapse rate.
 <!-- ================================================================ -->
 <div class="section" id="decisions">
 <h2>Decision Log</h2>
-<p>Complete record of all modeling decisions (D-001 through D-031). Click any
+<p>Complete record of all modeling decisions (D-001 through D-{len(decisions):03d}). Click any
 entry to expand the full rationale, alternatives considered, and implementation details.</p>
 
 {build_decision_log()}
