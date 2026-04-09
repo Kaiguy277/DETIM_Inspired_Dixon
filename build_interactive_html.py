@@ -1129,9 +1129,11 @@ satellite imagery. Used in the MCMC likelihood (D-028) with &sigma; = 75 m.
 <div class="section" id="calibration-methods">
 <h2>3.4 Calibration</h2>
 
-<p>Two-phase Bayesian approach: differential evolution (DE) finds the MAP estimate,
-then MCMC (emcee) maps the posterior distribution for projection uncertainty
-quantification.
+<p>Model calibration employs a two-phase Bayesian approach. First, Differential Evolution
+(DE; Storn &amp; Price, 1997) identifies the Maximum A Posteriori (MAP) parameter estimate.
+Then Markov Chain Monte Carlo (MCMC) sampling via the emcee affine-invariant ensemble
+sampler (Foreman-Mackey et al., 2013) maps the full posterior distribution to generate
+an ensemble of parameter sets for projection uncertainty quantification.
 <a class="why-btn" onclick="scrollToDecision('D-017')">D-017</a>
 <a class="why-btn" onclick="scrollToDecision('D-027')">D-027</a>
 <a class="why-btn" onclick="scrollToDecision('D-028')">D-028</a>
@@ -1381,7 +1383,15 @@ see D-028 for analysis of spatial vs. interannual snowline bias).</p>
 
 <h3>4.2.1 Stake Mass Balance</h3>
 
-{fig_tag(2, "Modeled vs observed stake mass balance for calibration targets")}
+<p>Figure 2 compares the modeled and observed annual mass balance at the three stake
+sites for WY2023&ndash;2025. The model is evaluated using 200 posterior parameter sets
+to capture calibration uncertainty. WY2023 shows excellent agreement at the ablation
+zone (ABL, +0.38 m w.e. residual) and accumulation zone (ACC, +0.05 m w.e.), but a
+persistent negative bias at the ELA (&minus;1.41 m w.e.). WY2024 exhibits large residuals
+at all sites due to a local accumulation event not captured by the off-glacier forcing
+station (see &sect;4.2.3). WY2025 observations are partially estimated.</p>
+
+{fig_tag(2, "Modeled vs observed annual mass balance at ABL (804 m), ELA (1078 m), and ACC (1293 m). Error bars show observational uncertainty (&plusmn;0.12 m w.e.) and model 5th&ndash;95th percentile spread. Asterisks denote estimated observations.")}
 
 <h4>Posterior predictive check by year and site</h4>
 <table class="data-table">
@@ -1440,9 +1450,16 @@ html += f'''</tbody></table>
 </div>
 
 <h3>4.2.4 Geodetic Fit</h3>
-<p>2000&ndash;2020 glacier-wide geodetic balance: observed &minus;0.939 &plusmn; 0.122,
-modeled &minus;0.765 (bias +0.17 m w.e./yr). The bias is within 1.4&sigma; of the
-reported uncertainty.</p>
+<p>The Hugonnet et al. (2021) 2000&ndash;2020 glacier-wide geodetic mass balance provides
+the most robust calibration constraint because it integrates over all spatial variability
+(including wind redistribution) and all 20 years. The modeled glacier-wide balance of
+&minus;0.77 m w.e. yr&minus;&sup1; compares to the observed &minus;0.94 &plusmn; 0.12 m w.e. yr&minus;&sup1;,
+a bias of +0.17 m w.e. yr&minus;&sup1; (within 1.4&sigma; of the reported uncertainty). While
+outside the formal 1&sigma; bound, this level of agreement is typical for distributed
+temperature-index models forced from off-glacier climate stations (cf. Geck et al., 2021,
+who reported a bias of &minus;0.05 m w.e. yr&minus;&sup1; with a closer on-glacier AWS).</p>
+
+{fig_tag(3, "Geodetic validation: modeled vs Hugonnet et al. (2021) sub-periods. The full 2000&ndash;2020 period (center) is used for calibration; the sub-periods are independent validation targets.")}
 
 </div>
 
@@ -1525,9 +1542,16 @@ html += f'''</tbody></table>
 <div class="section" id="historical">
 <h2>4.4 Historical Mass Balance (WY1999&ndash;2025)</h2>
 
-{fig_tag(12, "Climate forcing and modeled mass balance response (WY1999-2025)")}
+<p>The 250 best-performing parameter sets from the MCMC posterior were run through
+the full 27-year historical climate record (WY1999&ndash;2025) to reconstruct the
+glacier-wide mass balance time series. Figure 12 shows the relationship between
+climate forcing (summer temperature and winter precipitation) and modeled mass
+balance, while Figure 5 decomposes the balance into winter accumulation and
+summer ablation components.</p>
 
-{fig_tag(5, "Historical glacier-wide annual mass balance with ensemble uncertainty")}
+{fig_tag(12, "Climate forcing and modeled mass balance response (WY1999&ndash;2025). Top: summer temperature (June&ndash;September mean). Second: water-year precipitation. Third: seasonal balance decomposition. Bottom: annual glacier-wide balance with geodetic reference.")}
+
+{fig_tag(5, "Modeled winter (blue), summer (red), and annual (black) glacier-wide mass balance. Error bars show &plusmn;1 standard deviation across the 250-member parameter ensemble. Dashed line shows the 27-year mean (&minus;0.80 m w.e. yr&minus;&sup1;).")}
 
 <h3>4.4.1 Key Statistics</h3>
 
@@ -1574,7 +1598,16 @@ html += f'''</tbody></table>
 <div class="section" id="proj-results">
 <h2>4.5 Projections</h2>
 
-{fig_tag(7, "Projected glacier area, volume, and discharge under three SSPs (2025-2100)")}
+<p>Figure 7 shows the projected evolution of Dixon Glacier area from 2000 to 2100. The
+historical period (2000&ndash;2025, black) is constrained by 6 manually digitized glacier
+outlines. At the projection start (2025), the trajectory fans out into three Shared
+Socioeconomic Pathway (SSP) scenarios, each driven by 5 General Circulation Models (GCMs)
+and 250 posterior parameter sets. The dark shading shows the 25th&ndash;75th percentile
+interquartile range, while light shading extends to the 5th&ndash;95th percentile credible
+interval. All scenarios show continued retreat, but the rate of loss diverges sharply
+after ~2050.</p>
+
+{fig_tag(7, "Dixon Glacier area: digitized observations (2000&ndash;2025) and ensemble projections (2026&ndash;2100) under SSP1-2.6 (blue), SSP2-4.5 (orange), and SSP5-8.5 (red). Shading shows 25&ndash;75% (dark) and 5&ndash;95% (light) credible intervals.")}
 
 <h3>4.5.1 End-of-Century Summary</h3>
 

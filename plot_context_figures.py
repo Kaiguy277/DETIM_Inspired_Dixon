@@ -271,92 +271,100 @@ def fig_11_climate_forcing():
     climate = pd.read_csv(ROOT / "data" / "climate" / "dixon_gap_filled_climate.csv",
                           parse_dates=["date"], index_col="date")
 
-    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True,
-                              gridspec_kw={"height_ratios": [2, 2, 1]})
-
-    # Temperature
-    ax = axes[0]
-    # Color by source
     source_colors = {
-        "nuka": "#2166ac",
-        "mfb": "#4393c3",
-        "mcneil": "#92c5de",
-        "anchor": "#d1e5f0",
-        "kachemak": "#fddbc7",
-        "lower_kach": "#f4a582",
-        "interp": "#d6604d",
-        "climatology": "#b2182b",
+        "nuka": "#2166ac", "mfb": "#4393c3", "mcneil": "#92c5de",
+        "anchor": "#d1e5f0", "kachemak": "#fddbc7", "lower_kach": "#f4a582",
+        "interp": "#d6604d", "climatology": "#b2182b",
+    }
+    source_labels = {
+        "nuka": "Nuka SNOTEL", "mfb": "Middle Fork Bradley",
+        "mcneil": "McNeil Canyon", "anchor": "Anchor River",
+        "kachemak": "Kachemak Creek", "lower_kach": "Lower Kachemak",
+        "interp": "Interpolation", "climatology": "Climatology",
     }
 
-    # Plot all temperature, then overlay colored dots for non-nuka sources
-    ax.plot(climate.index, climate["temperature"], color="0.7", lw=0.3,
-            alpha=0.5, zorder=1)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 10),
+                              gridspec_kw={"height_ratios": [2, 2, 1.2]})
 
-    # Annual rolling mean
+    # --- Panel A: Monthly temperature with source coloring ---
+    ax = axes[0]
+    # Monthly means
+    monthly_T = climate["temperature"].resample("MS").mean()
+    ax.plot(monthly_T.index, monthly_T, color="0.6", lw=0.8, alpha=0.7, zorder=1)
+
+    # 365-day rolling mean
     rolling = climate["temperature"].rolling(365, center=True, min_periods=200).mean()
-    ax.plot(rolling.index, rolling, color="#2166ac", lw=2, label="365-day mean")
+    ax.plot(rolling.index, rolling, color="#2166ac", lw=2.5, label="365-day mean", zorder=3)
 
-    # Mark non-Nuka sources
-    for source, color in source_colors.items():
-        if source == "nuka":
+    # Color background spans by gap-fill source (yearly)
+    for wy in range(1999, 2026):
+        start = pd.Timestamp(f"{wy-1}-10-01")
+        end = pd.Timestamp(f"{wy}-09-30")
+        wy_data = climate.loc[start:end]
+        if len(wy_data) == 0:
             continue
-        mask = climate["temp_source"] == source
-        if mask.sum() > 0:
-            ax.scatter(climate.index[mask], climate["temperature"][mask],
-                      c=color, s=1, alpha=0.6, label=f"{source} ({mask.sum()} days)",
-                      zorder=2, rasterized=True)
+        dominant = wy_data["temp_source"].value_counts()
+        nuka_frac = dominant.get("nuka", 0) / len(wy_data)
+        if nuka_frac < 0.8:
+            # Highlight years with significant gap-fill
+            ax.axvspan(start, end, alpha=0.15, color="#d6604d", zorder=0)
 
     ax.set_ylabel("Temperature (°C)")
-    ax.set_title("Daily temperature at Nuka SNOTEL (gap-filled, D-025)")
-    ax.legend(loc="upper left", fontsize=8, ncol=2, markerscale=5)
+    ax.set_title("Monthly mean temperature at Nuka SNOTEL (gap-filled)")
+    ax.legend(loc="upper left", fontsize=9)
+    ax.set_xlim(climate.index[0], climate.index[-1])
+    ax.text(0.98, 0.95, "Shaded years: >20% gap-filled", transform=ax.transAxes,
+            fontsize=9, ha="right", va="top", color="#d6604d", style="italic")
 
-    # Precipitation
+    # --- Panel B: Water-year precipitation totals ---
     ax = axes[1]
-    ax.bar(climate.index, climate["precipitation"], width=1, color="#4393c3",
-           alpha=0.6, linewidth=0)
+    wy_precip = []
+    for wy in range(1999, 2026):
+        start = f"{wy-1}-10-01"
+        end = f"{wy}-09-30"
+        yr = climate.loc[start:end]
+        if len(yr) > 300:
+            wy_precip.append({"wy": wy, "precip": yr["precipitation"].sum()})
+    wp = pd.DataFrame(wy_precip)
+    mean_p = wp["precip"].mean()
+    colors = ["#4393c3" if p >= mean_p else "#f4a582" for p in wp["precip"]]
+    ax.bar(wp["wy"], wp["precip"], color=colors, edgecolor="none", alpha=0.8)
+    ax.axhline(mean_p, color="k", ls="--", lw=1, alpha=0.5)
+    ax.text(wp["wy"].iloc[-1] + 0.5, mean_p, f"mean = {mean_p:.0f} mm",
+            fontsize=9, va="bottom")
+    ax.set_ylabel("Water-year precipitation (mm)")
+    ax.set_title("Annual precipitation at Nuka SNOTEL")
+    ax.set_xlim(1998, 2026)
 
-    # Annual total as line
-    annual_p = climate["precipitation"].resample("YS").sum()
-    # Plot as step function spanning each year
-    for i, (date, total) in enumerate(annual_p.items()):
-        end = date + pd.DateOffset(years=1)
-        ax.axhline(total / 365, xmin=0, xmax=1, color="red", lw=0, alpha=0)  # placeholder
-
-    rolling_p = climate["precipitation"].rolling(365, center=True, min_periods=200).sum()
-    ax2 = ax.twinx()
-    ax2.plot(rolling_p.index, rolling_p, color="#b2182b", lw=2, label="Annual total (rolling)")
-    ax2.set_ylabel("Annual precip (mm)", color="#b2182b")
-    ax2.tick_params(axis="y", labelcolor="#b2182b")
-
-    ax.set_ylabel("Daily precip (mm)")
-    ax.set_title("Daily precipitation at Nuka SNOTEL")
-
-    # Source breakdown
+    # --- Panel C: Source attribution stacked by year ---
     ax = axes[2]
-    source_counts = climate["temp_source"].value_counts()
-    total = len(climate)
     sources_ordered = ["nuka", "mfb", "mcneil", "anchor", "kachemak",
                        "lower_kach", "interp", "climatology"]
-    bottom = 0
+    wy_range = list(range(1999, 2026))
+    bottom = np.zeros(len(wy_range))
     for src in sources_ordered:
-        count = source_counts.get(src, 0)
-        if count == 0:
-            continue
+        fracs = []
+        for wy in wy_range:
+            start = f"{wy-1}-10-01"
+            end = f"{wy}-09-30"
+            yr = climate.loc[start:end]
+            if len(yr) == 0:
+                fracs.append(0)
+            else:
+                fracs.append(100 * (yr["temp_source"] == src).sum() / len(yr))
+        fracs = np.array(fracs)
         color = source_colors.get(src, "0.5")
-        pct = 100 * count / total
-        ax.barh(0, count, left=bottom, color=color, edgecolor="white",
-                label=f"{src} ({pct:.1f}%)")
-        if pct > 3:
-            ax.text(bottom + count / 2, 0, f"{pct:.0f}%", ha="center", va="center",
-                    fontsize=9, fontweight="bold")
-        bottom += count
+        label = source_labels.get(src, src)
+        ax.bar(wy_range, fracs, bottom=bottom, color=color, edgecolor="none",
+               label=label, width=0.9)
+        bottom += fracs
 
-    ax.set_xlim(0, total)
-    ax.set_yticks([])
-    ax.set_xlabel("Number of days")
-    ax.set_title("Temperature source attribution")
-    ax.legend(loc="upper right", fontsize=8, ncol=4,
-              bbox_to_anchor=(1.0, -0.3))
+    ax.set_ylabel("Source (%)")
+    ax.set_xlabel("Water year")
+    ax.set_title("Temperature data source attribution by water year")
+    ax.set_xlim(1998, 2026)
+    ax.set_ylim(0, 105)
+    ax.legend(loc="upper right", fontsize=8, ncol=4, bbox_to_anchor=(1.0, -0.15))
 
     plt.tight_layout()
     save_fig(fig, "fig_11_climate_forcing")

@@ -39,7 +39,7 @@ LAPSE_RATES_CKM = [-4.5, -5.0, -5.5]
 N_SAMPLES = 250
 
 # SSP scenarios
-SCENARIOS = ['ssp245', 'ssp585']
+SCENARIOS = ['ssp126', 'ssp245', 'ssp585']
 
 
 def load_and_subsample_params(n=N_SAMPLES, seed=42):

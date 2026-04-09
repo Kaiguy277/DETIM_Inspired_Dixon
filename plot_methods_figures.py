@@ -47,14 +47,19 @@ PROJ_SSP126 = ROOT / "projection_output" / "PROJ-027_top1000_ssp126_2026-04-09" 
 PROJ_SSP245 = ROOT / "projection_output" / "PROJ-009_top250_ssp245_2026-03-23" / "projection_ssp245_ensemble_2100.csv"
 PROJ_SSP585 = ROOT / "projection_output" / "PROJ-011_top250_ssp585_2026-03-23" / "projection_ssp585_ensemble_2100.csv"
 
-LAPSE_DIRS = {
-    (-4.5, "ssp245"): ROOT / "projection_output" / "PROJ-021_lapse-4.5_ssp245_2026-04-08",
-    (-4.5, "ssp585"): ROOT / "projection_output" / "PROJ-022_lapse-4.5_ssp585_2026-04-08",
-    (-5.0, "ssp245"): ROOT / "projection_output" / "PROJ-023_lapse-5.0_ssp245_2026-04-08",
-    (-5.0, "ssp585"): ROOT / "projection_output" / "PROJ-024_lapse-5.0_ssp585_2026-04-08",
-    (-5.5, "ssp245"): ROOT / "projection_output" / "PROJ-025_lapse-5.5_ssp245_2026-04-08",
-    (-5.5, "ssp585"): ROOT / "projection_output" / "PROJ-026_lapse-5.5_ssp585_2026-04-08",
-}
+def _find_lapse_dir(lapse, ssp):
+    """Find the most recent lapse sensitivity projection directory."""
+    pattern = f"PROJ-*_lapse{lapse:.1f}_{ssp}_*"
+    matches = sorted(ROOT.glob(f"projection_output/{pattern}"))
+    return matches[-1] if matches else None
+
+# Build LAPSE_DIRS dynamically to pick up new runs
+LAPSE_DIRS = {}
+for _lapse in [-4.5, -5.0, -5.5]:
+    for _ssp in ["ssp126", "ssp245", "ssp585"]:
+        d = _find_lapse_dir(_lapse, _ssp)
+        if d is not None:
+            LAPSE_DIRS[(_lapse, _ssp)] = d
 
 # ---------------------------------------------------------------------------
 # Style
@@ -521,7 +526,7 @@ def fig_06_mb_trends():
 # Figure 7: Projection ensemble — 3 SSPs
 # ===================================================================
 def fig_07_projection_3ssp():
-    print("Generating Figure 7: Projection ensemble (3 SSPs)...")
+    print("Generating Figure 7: Projection ensemble (3 SSPs) with historical...")
 
     ssp_files = {
         "ssp126": PROJ_SSP126,
@@ -529,35 +534,49 @@ def fig_07_projection_3ssp():
         "ssp585": PROJ_SSP585,
     }
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(12, 6.5))
 
+    # --- Historical period (2000-2025) from digitized outlines ---
+    outline_years = [2000, 2005, 2010, 2015, 2020, 2025]
+    outline_areas = [40.11, 40.11, 39.83, 39.26, 38.59, 38.34]
+    ax.plot(outline_years, outline_areas, "ko-", ms=7, lw=2.5, zorder=10,
+            label="Observed (digitized outlines)")
+
+    # --- Projections (2026-2100) ---
     for ssp, fpath in ssp_files.items():
         if not fpath.exists():
             print(f"  WARNING: {fpath.name} not found, skipping {ssp}")
             continue
         df = pd.read_csv(fpath)
         yr = df["year"]
-        ax.plot(yr, df["area_km2_p50"], color=SSP_COLORS[ssp], lw=2,
+
+        # Connect historical to projection: start projection from last observed point
+        yr_full = pd.concat([pd.Series([2025]), yr], ignore_index=True)
+        p50_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p50"]], ignore_index=True)
+        p05_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p05"]], ignore_index=True)
+        p95_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p95"]], ignore_index=True)
+        p25_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p25"]], ignore_index=True)
+        p75_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p75"]], ignore_index=True)
+
+        ax.plot(yr_full, p50_full, color=SSP_COLORS[ssp], lw=2,
                 label=SSP_LABELS[ssp])
-        ax.fill_between(yr, df["area_km2_p05"], df["area_km2_p95"],
-                        color=SSP_COLORS[ssp], alpha=0.18)
-        # Also shade 25-75
-        ax.fill_between(yr, df["area_km2_p25"], df["area_km2_p75"],
+        ax.fill_between(yr_full, p05_full, p95_full,
+                        color=SSP_COLORS[ssp], alpha=0.15)
+        ax.fill_between(yr_full, p25_full, p75_full,
                         color=SSP_COLORS[ssp], alpha=0.25)
 
-    # Initial area reference
-    ax.axhline(INITIAL_AREA_KM2, color="black", ls=":", lw=1, alpha=0.6)
-    ax.text(2027, INITIAL_AREA_KM2 + 0.3,
-            f"Initial area = {INITIAL_AREA_KM2} km$^2$",
-            fontsize=9, color="black", alpha=0.7)
+    # Vertical line at projection start
+    ax.axvline(2025, color="0.5", ls="--", lw=1, alpha=0.5)
+    ax.text(2024.5, ax.get_ylim()[1] * 0.98, "Projection\nstart",
+            ha="right", va="top", fontsize=9, color="0.5", style="italic")
 
     ax.set_xlabel("Year")
     ax.set_ylabel("Glacier area (km$^2$)")
-    ax.set_title("Dixon Glacier area projections: 3 SSP scenarios", fontweight="bold")
-    ax.set_xlim(2026, 2100)
+    ax.set_title("Dixon Glacier area: observations (2000–2025) and projections (2026–2100)",
+                 fontweight="bold")
+    ax.set_xlim(1999, 2101)
     ax.legend(loc="lower left", framealpha=0.9)
 
-    # Minor gridlines
     ax.xaxis.set_minor_locator(mticker.MultipleLocator(5))
     ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
     ax.grid(which="minor", alpha=0.3, ls=":")
@@ -572,11 +591,19 @@ def fig_07_projection_3ssp():
 def fig_08_lapse_sensitivity():
     print("Generating Figure 8: Lapse rate sensitivity bracket...")
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.5), sharey=True)
+    # Determine which SSPs have lapse data
+    available_ssps = sorted(set(ssp for (_, ssp) in LAPSE_DIRS.keys()))
+    n_panels = len(available_ssps)
+    if n_panels == 0:
+        print("  No lapse sensitivity data found, skipping")
+        return
 
-    panels = [("ssp245", ax1), ("ssp585", ax2)]
+    fig, axes = plt.subplots(1, n_panels, figsize=(5.5 * n_panels, 5.5), sharey=True,
+                              squeeze=False)
+    axes = axes[0]
 
-    for ssp, ax in panels:
+    for i, ssp in enumerate(available_ssps):
+        ax = axes[i]
         for lapse in [-4.5, -5.0, -5.5]:
             key = (lapse, ssp)
             proj_dir = LAPSE_DIRS.get(key)
@@ -598,19 +625,16 @@ def fig_08_lapse_sensitivity():
             ax.fill_between(yr, df["area_km2_p25"], df["area_km2_p75"],
                             color=color, alpha=0.22)
 
-        # Initial area
         ax.axhline(INITIAL_AREA_KM2, color="black", ls=":", lw=1, alpha=0.6)
-
         ax.set_xlabel("Year")
-        ax.set_title(f"{SSP_LABELS[ssp]}", fontweight="bold")
+        ax.set_title(f"{SSP_LABELS.get(ssp, ssp)}", fontweight="bold")
         ax.set_xlim(2026, 2100)
         ax.legend(loc="lower left", fontsize=9, framealpha=0.9)
-
         ax.xaxis.set_minor_locator(mticker.MultipleLocator(5))
         ax.yaxis.set_minor_locator(mticker.AutoMinorLocator())
         ax.grid(which="minor", alpha=0.3, ls=":")
 
-    ax1.set_ylabel("Glacier area (km$^2$)")
+    axes[0].set_ylabel("Glacier area (km$^2$)")
     fig.suptitle("Lapse rate sensitivity: projected glacier area",
                  fontweight="bold", y=1.01)
     fig.tight_layout()
