@@ -542,6 +542,31 @@ def run_projection(params_path=None, scenario='ssp245', end_year=2100,
 
     print(f"  Loaded {len(ensemble)} GCMs: {list(ensemble.keys())}")
 
+    # ── Prepend historical climate (2000-2025) to each GCM ───────────
+    # This ensures continuous glacier evolution from the initial DEM geometry
+    # through the historical period and into the projection.
+    historical = pd.read_csv(CLIMATE_PATH, parse_dates=['date'], index_col='date')
+    historical = historical[['temperature', 'precipitation']]
+    # Trim to historical period (before GCM data starts)
+    hist_end = '2025-09-30'
+    historical = historical.loc[:hist_end]
+    print(f"  Historical climate: {len(historical)} days "
+          f"({historical.index.min().date()} to {historical.index.max().date()})")
+
+    for gcm_name in list(ensemble.keys()):
+        gcm_df = ensemble[gcm_name]
+        # Remove any GCM data that overlaps with historical period
+        gcm_df = gcm_df.loc['2025-10-01':]
+        # Concatenate: historical then GCM
+        combined = pd.concat([historical, gcm_df])
+        combined = combined[~combined.index.duplicated(keep='first')]
+        combined = combined.sort_index()
+        ensemble[gcm_name] = combined
+
+    wy_start = 2001  # Start from WY2001 (Oct 2000 - Sep 2001)
+    print(f"  Running WY{wy_start} to WY{end_year} "
+          f"(historical 2001-2025 + projection 2026-{end_year})")
+
     # ── Routing parameters ────────────────────────────────────────────
     routing_params = config.DEFAULT_ROUTING
 
@@ -560,7 +585,7 @@ def run_projection(params_path=None, scenario='ssp245', end_year=2100,
             run_count += 1
             r = run_single_gcm(
                 fmodel, gcm_climate, ice_thickness, bedrock, grid,
-                params, routing_params, 2026, end_year, gcm_name,
+                params, routing_params, wy_start, end_year, gcm_name,
             )
             gcm_runs.append(r)
             all_runs.append(r)
