@@ -924,6 +924,7 @@ details .detail-content {{
   <a href="#validation-methods" onclick="setActive(this)">3.5 Validation</a>
   <a href="#projection-design" onclick="setActive(this)">3.6 Projection Design</a>
   <a href="#implementation" onclick="setActive(this)">3.7 Implementation</a>
+  <a href="#ai-methods" onclick="setActive(this)">3.8 AI-Assisted Development</a>
 
   <div class="nav-chapter results">4. Results</div>
   <a href="#cal-results" class="results-link" onclick="setActive(this)">4.1 Calibration Results</a>
@@ -1284,6 +1285,103 @@ on a 100 m grid (4,011 glacier cells). The full MCMC ensemble ({n_walkers} walke
 <code>glacier_dynamics.py</code> (delta-h evolution),
 <code>climate_projections.py</code> (CMIP6 bias correction),
 <code>routing.py</code> (parallel linear reservoirs for discharge).</p>
+
+</div>
+
+<!-- ================================================================ -->
+<!-- 3.8 AI-ASSISTED DEVELOPMENT -->
+<!-- ================================================================ -->
+<div class="section" id="ai-methods">
+<h2>3.8 AI-Assisted Development</h2>
+
+<p>Model development, calibration, analysis, and thesis preparation were conducted in
+collaboration with <strong>Claude Code</strong> (Anthropic, Claude Opus 4.6), an AI-assisted
+software engineering tool. The researcher directed all scientific decisions, provided
+domain expertise, field observations, and local knowledge of Dixon Glacier. Claude Code
+contributed implementation support. This section documents the AI&rsquo;s role for
+transparency and reproducibility.</p>
+
+<h3>3.8.1 Scope of AI Assistance</h3>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.2em; margin:1em 0;">
+  <div style="background:rgba(108,140,255,0.1); padding:1em; border-radius:8px; border-left:3px solid #6c8cff;">
+    <h4 style="margin-top:0; color:#6c8cff;">Model Implementation</h4>
+    <p>Translated published equations (Hock 1999, Huss et al. 2010, Hock &amp; Jansson 2005)
+    into Python with Numba JIT compilation. Structured the modular package architecture
+    (18 modules, ~3,900 lines). Optimized the simulation kernel to ~240 ms per water-year.</p>
+  </div>
+  <div style="background:rgba(245,158,11,0.1); padding:1em; border-radius:8px; border-left:3px solid #f59e0b;">
+    <h4 style="margin-top:0; color:#f59e0b;">Calibration Pipeline</h4>
+    <p>Implemented the two-phase Bayesian calibration (DE + MCMC), objective function,
+    convergence diagnostics, multi-seed clustering, snowline likelihood terms, and
+    behavioral filtering. Researcher selected targets, bounds, and evaluated physical
+    reasonableness.</p>
+  </div>
+  <div style="background:rgba(94,234,212,0.1); padding:1em; border-radius:8px; border-left:3px solid #5eead4;">
+    <h4 style="margin-top:0; color:#5eead4;">Data Processing</h4>
+    <p>Multi-station gap-filling of Nuka SNOTEL (D-025), CMIP6 download and bias
+    correction from NEX-GDDP-CMIP6, snowline processing. Researcher identified data
+    sources, evaluated quality, and selected methodology.</p>
+  </div>
+  <div style="background:rgba(239,68,68,0.1); padding:1em; border-radius:8px; border-left:3px solid #ef4444;">
+    <h4 style="margin-top:0; color:#ef4444;">Analysis &amp; Visualization</h4>
+    <p>Validation analyses, historical ensemble, projection runs, and publication-quality
+    figures (styled after Geck et al. 2021). 30 runner/plotting scripts (~16,000 lines).
+    Interactive methods document for advisor presentation.</p>
+  </div>
+</div>
+
+<h3>3.8.2 What AI Did Not Do</h3>
+
+<p>All scientific judgment remained with the researcher:</p>
+
+<ul>
+  <li>Selection of the DETIM model and Method 2 (Hock, 1999)</li>
+  <li>Field data collection (stake measurements, AWS deployment at ELA)</li>
+  <li>Manual digitization of glacier outlines and snowlines from satellite imagery</li>
+  <li>Choice of calibration targets, parameter bounds, and fixed parameter values</li>
+  <li>Interpretation of calibration results and identification of structural limitations
+      (e.g., ELA wind redistribution bias, D-031)</li>
+  <li>Evaluation of whether results are physically reasonable</li>
+  <li>Decisions to accept, modify, or reject model configurations (D-001 through D-031)</li>
+</ul>
+
+<h3>3.8.3 Reproducibility &amp; Traceability</h3>
+
+<div class="stats-row">
+  <div class="stat"><div class="stat-value">32</div><div class="stat-label">Git commits</div></div>
+  <div class="stat"><div class="stat-value">31</div><div class="stat-label">AI-assisted commits</div></div>
+  <div class="stat"><div class="stat-value">~20,000</div><div class="stat-label">Lines of Python</div></div>
+  <div class="stat"><div class="stat-value">31</div><div class="stat-label">Documented decisions</div></div>
+</div>
+
+<p>All AI-assisted commits are tagged with a <code>Co-Authored-By: Claude Opus 4.6</code>
+trailer for traceability. The complete decision log (D-001&ndash;D-031), calibration registry
+(CAL-001&ndash;CAL-013), and version-controlled codebase ensure that AI contributions can be
+audited. All analysis pipelines are deterministic (given fixed random seeds) and reproducible
+independently of AI assistance.</p>
+
+<details>
+<summary>Expand: Ethical considerations</summary>
+<div class="detail-content">
+<p>The use of AI in scientific research raises questions about authorship, accountability,
+and reproducibility. In this work:</p>
+<ul>
+  <li><strong>Accountability:</strong> The researcher assumes full responsibility for all
+  scientific claims, interpretations, and conclusions. AI-generated code and text were
+  reviewed before acceptance.</li>
+  <li><strong>Authorship:</strong> Claude Code is credited as a co-author on Git commits
+  (per Anthropic&rsquo;s guidelines) but does not meet the ICMJE criteria for manuscript
+  authorship. The tool is acknowledged in the methods section.</li>
+  <li><strong>Reproducibility:</strong> The codebase is self-contained and can be executed
+  without AI assistance. All random seeds are fixed. The decision log provides a complete
+  audit trail of why each modeling choice was made.</li>
+  <li><strong>Bias awareness:</strong> AI may introduce systematic biases in code structure,
+  analysis choices, or interpretation framing. The researcher mitigated this through
+  independent validation of results against published literature and advisor review.</li>
+</ul>
+</div>
+</details>
 
 </div>
 

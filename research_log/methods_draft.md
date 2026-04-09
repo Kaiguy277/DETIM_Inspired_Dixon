@@ -301,3 +301,76 @@ generated with the corner package (Foreman-Mackey, 2016).
 
 Spatial data handling uses rasterio for DEM and glacier outline operations.
 All code is available at [repository TBD].
+
+## 3.8 Use of AI-Assisted Development
+
+Model development, calibration, analysis, and thesis preparation were
+conducted in collaboration with Claude Code (Anthropic, Claude Opus 4.6),
+an AI-assisted software engineering tool. The role of AI in this work is
+documented here for transparency and reproducibility.
+
+### 3.8.1 Scope of AI Assistance
+
+Claude Code was used as an interactive development partner throughout the
+project. The researcher (K. [last name]) directed all scientific decisions,
+provided domain expertise, field observations, and local knowledge of Dixon
+Glacier. Claude Code contributed implementation support in the following
+areas:
+
+**Model implementation:** The DETIM model physics (Hock, 1999), glacier
+dynamics (Huss et al., 2010), and discharge routing (Hock & Jansson, 2005)
+were implemented in Python with Numba JIT compilation. Claude Code
+translated the published equations into code, optimized the simulation
+kernel for performance (~240 ms per water-year), and structured the
+modular package architecture (`dixon_melt/`, 18 modules, ~3,900 lines).
+
+**Calibration pipeline:** The two-phase Bayesian calibration (Differential
+Evolution + MCMC) was designed collaboratively. The researcher selected
+calibration targets, defined parameter bounds from literature, and
+evaluated physical reasonableness of results. Claude Code implemented the
+objective function, MCMC sampling with emcee, convergence diagnostics,
+multi-seed clustering, and the behavioral filtering framework.
+
+**Data processing:** Multi-station gap-filling of the Nuka SNOTEL climate
+record (D-025), CMIP6 data download and bias correction from NEX-GDDP-CMIP6,
+and snowline digitization processing were implemented with AI assistance.
+The researcher identified data sources, evaluated data quality, and made
+decisions about gap-filling methodology.
+
+**Analysis and visualization:** Validation analyses (geodetic sub-period
+comparison, posterior predictive checks, parameter sensitivity), historical
+ensemble reconstruction, and projection ensemble runs were designed
+collaboratively and implemented by Claude Code. Publication-quality figures
+(styled after Geck et al., 2021) were generated programmatically.
+
+**Documentation:** The research decision log (D-001 through D-031),
+calibration run registry (CAL-001 through CAL-013), and methods draft
+were maintained collaboratively, with Claude Code drafting text that the
+researcher reviewed, revised, and approved.
+
+### 3.8.2 What AI Did Not Do
+
+All scientific judgment remained with the researcher:
+
+- Selection of the DETIM model and Method 2 (Hock, 1999)
+- Field data collection (stake measurements, AWS deployment)
+- Manual digitization of glacier outlines and snowlines from satellite imagery
+- Choice of calibration targets, parameter bounds, and fixed parameter values
+- Interpretation of calibration results and identification of structural
+  limitations (e.g., ELA wind redistribution bias, D-031)
+- Evaluation of whether results are physically reasonable
+- Decisions to accept, modify, or reject model configurations
+
+The researcher reviewed all code, validated outputs against independent
+checks, and made all decisions documented in the research log. Claude Code
+did not autonomously make scientific choices or modify the research direction.
+
+### 3.8.3 Reproducibility
+
+All AI-assisted commits in the Git repository are tagged with a
+"Co-Authored-By: Claude Opus 4.6" trailer for traceability. The complete
+conversation history, decision log, and version-controlled codebase
+ensure that the AI's contributions can be audited. The model code,
+calibration scripts, and analysis pipelines are fully deterministic
+(given fixed random seeds) and can be reproduced independently of AI
+assistance.
