@@ -1,0 +1,24 @@
+{
+  "scenario": "ssp126",
+  "end_year": 2100,
+  "grid_res_m": 100.0,
+  "n_param_samples": 250,
+  "gcms": [
+    "ACCESS-CM2",
+    "MPI-ESM1-2-HR",
+    "MRI-ESM2-0",
+    "NorESM2-MM"
+  ],
+  "n_total_runs": 1000,
+  "initial_area_km2": 40.11,
+  "initial_volume_km3": 6.8722845819339025,
+  "thickness_source": "farinotti",
+  "elapsed_seconds": 659.5112771987915,
+  "percentiles": [
+    5,
+    25,
+    50,
+    75,
+    95
+  ]
+}
