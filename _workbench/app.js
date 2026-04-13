@@ -1,845 +1,1193 @@
-// Dixon Glacier DETIM — Model Workbench App
-// All rendering uses safe DOM methods (createElement, textContent, appendChild)
+/* ===================================================================
+   Dixon Glacier DETIM -- Interactive Model Workbench
+   All data embedded. Safe DOM only: createElement, textContent, appendChild.
+   =================================================================== */
 
-// ─── HELPER: safe element builder ───
+// ── DOM helper ──────────────────────────────────────────────────────
 function el(tag, attrs, children) {
-  const e = document.createElement(tag);
-  if (attrs) Object.entries(attrs).forEach(([k,v]) => {
-    if (k === 'text') e.textContent = v;
-    else if (k === 'cls') e.className = v;
-    else if (k === 'click') e.addEventListener('click', v);
-    else if (k === 'css') e.style.cssText = v;
-    else e.setAttribute(k, v);
-  });
-  if (children) {
-    if (typeof children === 'string') e.textContent = children;
-    else if (Array.isArray(children)) children.forEach(c => { if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+  var node = document.createElement(tag);
+  if (attrs) {
+    Object.keys(attrs).forEach(function(k) {
+      if (k === 'className') node.className = attrs[k];
+      else if (k === 'textContent') node.textContent = attrs[k];
+      else if (k === 'htmlFor') node.htmlFor = attrs[k];
+      else if (k.indexOf('on') === 0) node.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
+      else if (k === 'style' && typeof attrs[k] === 'object') {
+        Object.keys(attrs[k]).forEach(function(s) { node.style[s] = attrs[k][s]; });
+      } else node.setAttribute(k, attrs[k]);
+    });
   }
-  return e;
+  if (children) {
+    if (!Array.isArray(children)) children = [children];
+    children.forEach(function(c) {
+      if (c == null) return;
+      if (typeof c === 'string' || typeof c === 'number') {
+        node.appendChild(document.createTextNode(String(c)));
+      } else {
+        node.appendChild(c);
+      }
+    });
+  }
+  return node;
 }
-function txt(s) { return document.createTextNode(s); }
 
-// Math rendering helper — creates a span with TeX that MathJax will process
-function texSpan(latex) {
-  const s = el('span'); s.textContent = '$$' + latex + '$$'; return s;
-}
+// ── DATA ────────────────────────────────────────────────────────────
 
-// ─── EMBEDDED DATA ───
+var DATA = {};
 
-// Global color map for stake sites (used in data view + charts)
-const sColors={ABL:'#ef4444',ELA:'#f59e0b',ACC:'#22c55e'};
-
-const ANNUAL_CLIMATE = [{"year":1999,"t":0.60,"p":2070},{"year":2000,"t":2.04,"p":2520},{"year":2001,"t":0.26,"p":2243},{"year":2002,"t":2.55,"p":3439},{"year":2003,"t":2.99,"p":2344},{"year":2004,"t":2.89,"p":2423},{"year":2005,"t":2.01,"p":2301},{"year":2006,"t":1.18,"p":2182},{"year":2007,"t":1.36,"p":2210},{"year":2008,"t":0.34,"p":1887},{"year":2009,"t":1.70,"p":1816},{"year":2010,"t":1.59,"p":1867},{"year":2011,"t":1.06,"p":2324},{"year":2012,"t":0.12,"p":2347},{"year":2013,"t":2.27,"p":2352},{"year":2014,"t":3.57,"p":2908},{"year":2015,"t":3.45,"p":2609},{"year":2016,"t":3.70,"p":2784},{"year":2017,"t":1.78,"p":2459},{"year":2018,"t":3.45,"p":2741},{"year":2019,"t":5.05,"p":2697},{"year":2020,"t":2.92,"p":1999},{"year":2021,"t":2.05,"p":1514},{"year":2022,"t":3.24,"p":2009},{"year":2023,"t":1.99,"p":1869},{"year":2024,"t":2.18,"p":2225},{"year":2025,"t":4.46,"p":1608}];
-
-const MONTHLY_CLIM = [{m:1,t:-4.64,p:6.66},{m:2,t:-3.60,p:5.19},{m:3,t:-3.82,p:3.68},{m:4,t:-0.10,p:4.25},{m:5,t:3.96,p:3.50},{m:6,t:8.09,p:3.44},{m:7,t:10.81,p:4.18},{m:8,t:10.70,p:5.96},{m:9,t:7.42,p:10.31},{m:10,t:2.67,p:11.48},{m:11,t:-2.02,p:8.67},{m:12,t:-3.49,p:8.64}];
-
-const STAKE_DATA = [
-  {s:"ABL",ty:"annual",yr:2023,mb:-4.50,u:0.12,z:804},{s:"ABL",ty:"summer",yr:2023,mb:-5.35,u:0.12,z:804},{s:"ABL",ty:"winter",yr:2023,mb:0.85,u:0.10,z:804},
-  {s:"ABL",ty:"annual",yr:2024,mb:-2.63,u:0.12,z:804},{s:"ABL",ty:"summer",yr:2024,mb:-4.56,u:0.12,z:804},{s:"ABL",ty:"winter",yr:2024,mb:1.93,u:0.10,z:804},{s:"ABL",ty:"winter",yr:2025,mb:1.60,u:0.10,z:804},
-  {s:"ACC",ty:"annual",yr:2023,mb:0.37,u:0.12,z:1293},{s:"ACC",ty:"summer",yr:2023,mb:-2.25,u:0.12,z:1293},{s:"ACC",ty:"winter",yr:2023,mb:2.45,u:0.10,z:1293},
-  {s:"ACC",ty:"annual",yr:2024,mb:1.46,u:0.12,z:1293},{s:"ACC",ty:"summer",yr:2024,mb:-1.55,u:0.12,z:1293},{s:"ACC",ty:"winter",yr:2024,mb:3.01,u:0.10,z:1293},{s:"ACC",ty:"winter",yr:2025,mb:3.53,u:0.15,z:1293},{s:"ACC",ty:"annual",yr:2025,mb:1.88,u:0.15,z:1293},{s:"ACC",ty:"summer",yr:2025,mb:-1.66,u:0.15,z:1293},
-  {s:"ELA",ty:"annual",yr:2023,mb:0.10,u:0.12,z:1078},{s:"ELA",ty:"summer",yr:2023,mb:-2.26,u:0.12,z:1078},{s:"ELA",ty:"winter",yr:2023,mb:2.36,u:0.10,z:1078},
-  {s:"ELA",ty:"annual",yr:2024,mb:0.10,u:0.12,z:1078},{s:"ELA",ty:"summer",yr:2024,mb:-2.50,u:0.12,z:1078},{s:"ELA",ty:"winter",yr:2024,mb:2.60,u:0.10,z:1078},{s:"ELA",ty:"winter",yr:2025,mb:3.04,u:0.10,z:1078},{s:"ELA",ty:"annual",yr:2025,mb:1.08,u:0.12,z:1078},{s:"ELA",ty:"summer",yr:2025,mb:-1.96,u:0.12,z:1078}
+DATA.stakes = [
+  {site:"ABL",period:"annual",year:2023,start:"2022-10-01",end:"2023-10-03",mb:-4.5,unc:0.12,elev:804},
+  {site:"ABL",period:"summer",year:2023,start:"2023-05-02",end:"2023-10-03",mb:-5.35,unc:0.12,elev:804},
+  {site:"ABL",period:"winter",year:2023,start:"2022-10-01",end:"2023-05-02",mb:0.85,unc:0.10,elev:804},
+  {site:"ABL",period:"annual",year:2024,start:"2023-10-01",end:"2024-09-20",mb:-2.63,unc:0.12,elev:804},
+  {site:"ABL",period:"summer",year:2024,start:"2024-04-29",end:"2024-09-20",mb:-4.56,unc:0.12,elev:804},
+  {site:"ABL",period:"winter",year:2024,start:"2023-10-01",end:"2024-04-29",mb:1.93,unc:0.10,elev:804},
+  {site:"ABL",period:"winter",year:2025,start:"2024-10-01",end:"2025-05-11",mb:1.6,unc:0.10,elev:804},
+  {site:"ACC",period:"annual",year:2023,start:"2022-10-01",end:"2023-10-03",mb:0.37,unc:0.12,elev:1293},
+  {site:"ACC",period:"summer",year:2023,start:"2023-05-02",end:"2023-10-03",mb:-2.25,unc:0.12,elev:1293},
+  {site:"ACC",period:"winter",year:2023,start:"2022-10-01",end:"2023-05-02",mb:2.45,unc:0.10,elev:1293},
+  {site:"ACC",period:"annual",year:2024,start:"2023-10-01",end:"2024-09-20",mb:1.46,unc:0.12,elev:1293},
+  {site:"ACC",period:"summer",year:2024,start:"2024-04-29",end:"2024-09-20",mb:-1.55,unc:0.12,elev:1293},
+  {site:"ACC",period:"winter",year:2024,start:"2023-10-01",end:"2024-04-29",mb:3.01,unc:0.10,elev:1293},
+  {site:"ACC",period:"winter",year:2025,start:"2024-10-01",end:"2025-05-11",mb:3.53,unc:0.15,elev:1293},
+  {site:"ACC",period:"annual",year:2025,start:"2024-10-01",end:"2025-10-01",mb:1.875,unc:0.15,elev:1293},
+  {site:"ACC",period:"summer",year:2025,start:"2025-05-11",end:"2025-10-01",mb:-1.655,unc:0.15,elev:1293},
+  {site:"ELA",period:"annual",year:2023,start:"2022-10-01",end:"2023-10-03",mb:0.1,unc:0.12,elev:1078},
+  {site:"ELA",period:"summer",year:2023,start:"2023-05-02",end:"2023-10-03",mb:-2.26,unc:0.12,elev:1078},
+  {site:"ELA",period:"winter",year:2023,start:"2022-10-01",end:"2023-05-02",mb:2.36,unc:0.10,elev:1078},
+  {site:"ELA",period:"annual",year:2024,start:"2023-10-01",end:"2024-09-20",mb:0.1,unc:0.12,elev:1078},
+  {site:"ELA",period:"summer",year:2024,start:"2024-04-29",end:"2024-09-20",mb:-2.5,unc:0.12,elev:1078},
+  {site:"ELA",period:"winter",year:2024,start:"2023-10-01",end:"2024-04-29",mb:2.6,unc:0.10,elev:1078},
+  {site:"ELA",period:"winter",year:2025,start:"2024-10-01",end:"2025-05-11",mb:3.04,unc:0.10,elev:1078},
+  {site:"ELA",period:"annual",year:2025,start:"2024-10-01",end:"2025-10-01",mb:1.08,unc:0.12,elev:1078},
+  {site:"ELA",period:"summer",year:2025,start:"2025-05-11",end:"2025-10-01",mb:-1.96,unc:0.12,elev:1078}
 ];
 
-const GEODETIC = [{per:"2000-2010",dh:-1.261,edh:0.246,mb:-1.072,emb:0.225},{per:"2010-2020",dh:-0.948,edh:0.226,mb:-0.806,emb:0.202},{per:"2000-2020",dh:-1.105,edh:0.115,mb:-0.939,emb:0.122}];
-
-const SNOWLINES = [{yr:1995,mn:1027,md:1031,mi:926,mx:1156,sd:55,n:780,src:"landsat-5"},{yr:1999,mn:1107,md:1087,mi:1041,mx:1297,sd:58,n:975,src:"landsat-7"},{yr:2000,mn:1036,md:1022,mi:961,mx:1201,sd:56,n:578,src:"landsat-7"},{yr:2003,mn:984,md:985,mi:930,mx:1029,sd:24,n:666,src:"landsat-7"},{yr:2004,mn:1204,md:1197,mi:1131,mx:1341,sd:51,n:752,src:"landsat-7"},{yr:2005,mn:1107,md:1097,mi:1047,mx:1184,sd:38,n:755,src:"landsat-7"},{yr:2006,mn:1110,md:1108,mi:1030,mx:1203,sd:42,n:1002,src:"landsat-5"},{yr:2007,mn:1129,md:1127,mi:1037,mx:1327,sd:67,n:988,src:"landsat-5"},{yr:2009,mn:1232,md:1225,mi:1191,mx:1283,sd:23,n:524,src:"landsat-7"},{yr:2010,mn:1087,md:1084,mi:956,mx:1224,sd:61,n:1139,src:"landsat-7"},{yr:2011,mn:1065,md:1053,mi:1014,mx:1159,sd:34,n:476,src:"landsat-7"},{yr:2012,mn:1080,md:1071,mi:1018,mx:1166,sd:41,n:566,src:"landsat-7"},{yr:2013,mn:1158,md:1158,mi:1046,mx:1312,sd:57,n:2225,src:"landsat-8"},{yr:2014,mn:1238,md:1251,mi:1159,mx:1292,sd:39,n:674,src:"landsat-8"},{yr:2015,mn:1055,md:1057,mi:961,mx:1133,sd:49,n:915,src:"landsat-8"},{yr:2016,mn:1074,md:1057,mi:969,mx:1193,sd:56,n:799,src:"landsat-8"},{yr:2017,mn:1161,md:1162,mi:1044,mx:1307,sd:59,n:1744,src:"sentinel-2"},{yr:2018,mn:1170,md:1172,mi:1071,mx:1243,sd:45,n:1456,src:"sentinel-2"},{yr:2019,mn:1160,md:1152,mi:1054,mx:1356,sd:62,n:2420,src:"sentinel-2"},{yr:2020,mn:1126,md:1125,mi:1067,mx:1221,sd:34,n:1045,src:"sentinel-2"},{yr:2021,mn:1088,md:1077,mi:1018,mx:1190,sd:40,n:853,src:"sentinel-2"},{yr:2023,mn:1125,md:1111,mi:1065,mx:1265,sd:49,n:939,src:"sentinel-2"},{yr:2024,mn:1166,md:1178,mi:1008,mx:1338,sd:70,n:1712,src:"sentinel-2"}];
-
-const OUTLINE_AREAS = [{yr:2000,a:40.11},{yr:2005,a:40.11},{yr:2010,a:39.83},{yr:2015,a:39.26},{yr:2020,a:38.59},{yr:2025,a:38.34}];
-
-const POST = [{"MF":7.561,"MG":-0.00465,"RS":0.001634,"PG":0.000537,"PC":1.765,"T0":0.025},{"MF":7.377,"MG":-0.00406,"RS":0.001089,"PG":0.000644,"PC":1.710,"T0":0.016},{"MF":6.850,"MG":-0.00371,"RS":0.001733,"PG":0.000721,"PC":1.600,"T0":0.002},{"MF":7.111,"MG":-0.00381,"RS":0.001502,"PG":0.001018,"PC":1.448,"T0":0.022},{"MF":6.954,"MG":-0.00390,"RS":0.001794,"PG":0.000453,"PC":1.838,"T0":0.001},{"MF":7.099,"MG":-0.00409,"RS":0.001833,"PG":0.000679,"PC":1.644,"T0":0.007},{"MF":7.274,"MG":-0.00357,"RS":0.000572,"PG":0.001143,"PC":1.387,"T0":0.012},{"MF":6.981,"MG":-0.00396,"RS":0.001933,"PG":0.000573,"PC":1.725,"T0":0.001},{"MF":7.310,"MG":-0.00429,"RS":0.001506,"PG":0.000643,"PC":1.663,"T0":0.007},{"MF":7.555,"MG":-0.00422,"RS":0.000705,"PG":0.000797,"PC":1.569,"T0":0.022},{"MF":7.036,"MG":-0.00410,"RS":0.001979,"PG":0.000735,"PC":1.591,"T0":0.004},{"MF":7.121,"MG":-0.00410,"RS":0.001549,"PG":0.000915,"PC":1.446,"T0":0.002},{"MF":7.352,"MG":-0.00404,"RS":0.000641,"PG":0.000913,"PC":1.451,"T0":0.011},{"MF":7.489,"MG":-0.00452,"RS":0.001437,"PG":0.000616,"PC":1.680,"T0":0.010},{"MF":7.464,"MG":-0.00451,"RS":0.001462,"PG":0.000447,"PC":1.841,"T0":0.004},{"MF":7.199,"MG":-0.00423,"RS":0.001960,"PG":0.000846,"PC":1.545,"T0":0.023},{"MF":7.370,"MG":-0.00450,"RS":0.001791,"PG":0.000609,"PC":1.682,"T0":0.007},{"MF":7.436,"MG":-0.00446,"RS":0.001456,"PG":0.000351,"PC":1.945,"T0":0.012},{"MF":7.606,"MG":-0.00441,"RS":0.000744,"PG":0.000785,"PC":1.552,"T0":0.017},{"MF":7.141,"MG":-0.00419,"RS":0.001710,"PG":0.000684,"PC":1.620,"T0":0.007},{"MF":7.442,"MG":-0.00445,"RS":0.001388,"PG":0.000214,"PC":2.107,"T0":0.006},{"MF":7.388,"MG":-0.00411,"RS":0.001010,"PG":0.000922,"PC":1.468,"T0":0.018},{"MF":7.068,"MG":-0.00410,"RS":0.001706,"PG":0.000555,"PC":1.718,"T0":0.008},{"MF":7.427,"MG":-0.00444,"RS":0.001425,"PG":0.000214,"PC":2.113,"T0":0.003},{"MF":7.387,"MG":-0.00434,"RS":0.001148,"PG":0.000672,"PC":1.616,"T0":0.006},{"MF":7.024,"MG":-0.00400,"RS":0.001693,"PG":0.000791,"PC":1.534,"T0":0.021},{"MF":7.353,"MG":-0.00438,"RS":0.001621,"PG":0.000241,"PC":2.090,"T0":0.002},{"MF":7.203,"MG":-0.00425,"RS":0.001762,"PG":0.000386,"PC":1.907,"T0":0.005},{"MF":7.383,"MG":-0.00393,"RS":0.000699,"PG":0.000852,"PC":1.523,"T0":0.039},{"MF":7.414,"MG":-0.00452,"RS":0.001718,"PG":0.000264,"PC":2.051,"T0":0.009}];
-
-// ─── MODULE DATA ───
-const MODULES = [
-  {name:"config.py",role:"Configuration",lines:191,desc:"Site constants, station metadata, default parameters, physical constants, delta-h coefficients, routing defaults",details:"Defines all site-specific constants for Dixon Glacier. Key values: SNOTEL_ELEV=375m (D-013), DIXON_AWS_ELEV=1078m (D-023), PSI_A=0.75, DEFAULT_PARAMS dict.",eqs:["EQ06"],params:["SNOTEL_ELEV","DIXON_AWS_ELEV","PSI_A","SOLAR_CONSTANT","DELTAH_PARAMS","VA_C","VA_GAMMA","DEFAULT_ROUTING"],decisions:["D-002","D-013","D-015","D-023"],calledBy:["melt.py","temperature.py","solar.py","glacier_dynamics.py","routing.py"]},
-  {name:"melt.py",role:"Core melt computation",lines:71,desc:"DETIM Method 2: M = (MF + r * I_pot) * T. Numba JIT.",details:"Implements the core DETIM equation (Hock 1999 Method 2). Takes distributed temperature, potential radiation, surface type to compute melt at every cell.",eqs:["EQ01"],params:["MF","r_snow","r_ice"],decisions:["D-001"],calledBy:["fast_model.py","model.py"]},
-  {name:"temperature.py",role:"Temperature distribution",lines:47,desc:"Lapse-rate extrapolation from station to grid cells.",details:"T_cell = T_station + lapse * (z_cell - z_station). Lapse fixed at -5.0 C/km (D-015).",eqs:["EQ02"],params:["lapse_rate"],decisions:["D-006","D-012","D-013","D-015"],calledBy:["fast_model.py","model.py"]},
-  {name:"precipitation.py",role:"Precipitation distribution",lines:68,desc:"Elevation gradient, correction, rain/snow partition.",details:"Distributes station precipitation with Cp correction + elevation gradient, partitions rain/snow via linear T0 transition.",eqs:["EQ03","EQ04"],params:["precip_corr","precip_grad","T0"],decisions:["D-011","D-013","D-016"],calledBy:["fast_model.py","model.py"]},
-  {name:"solar.py",role:"Solar radiation",lines:188,desc:"Oke (1987) solar geometry, topographic correction, daily integration.",details:"Potential clear-sky direct radiation at every cell for every DOY. 365-day lookup table at 3-hour intervals. Includes declination, hour angle, earth-sun distance, atmospheric transmissivity, slope/aspect correction.",eqs:["EQ06"],params:["PSI_A","SOLAR_CONSTANT"],decisions:["D-001"],calledBy:["model.py","fast_model.py"]},
-  {name:"terrain.py",role:"DEM processing",lines:100,desc:"Load/reproject DEM, slope/aspect, Winstral Sx.",details:"Loads IfSAR GeoTIFF, reprojects UTM 5N, resamples to target resolution, computes slope/aspect, optional Winstral Sx wind exposure.",eqs:[],params:[],decisions:["D-011"],calledBy:["model.py","fast_model.py"]},
-  {name:"snowpack.py",role:"SWE tracking",lines:99,desc:"Snow accumulation/ablation, surface type (snow/firn/ice).",details:"Tracks SWE per cell. Snowfall adds, melt subtracts snow first then ice. Surface type drives radiation factor selection.",eqs:["EQ11"],params:[],decisions:["D-005"],calledBy:["fast_model.py","model.py"]},
-  {name:"massbalance.py",role:"Balance integration",lines:63,desc:"Glacier-wide and point balance extraction.",details:"Integrates cumulative melt and accumulation into glacier-wide specific balance (m w.e.) and point balances at stake elevations.",eqs:[],params:[],decisions:["D-003"],calledBy:["calibration.py","fast_model.py"]},
-  {name:"fast_model.py",role:"JIT simulation kernel",lines:370,desc:"Monolithic Numba kernel + FastDETIM class wrapper.",details:"Single @njit(parallel=True) function: temperature transfer, lapse, precipitation, rain/snow, elevation-dependent MF, DETIM melt, snowpack, runoff. ~240ms/WY at 100m grid.",eqs:["EQ01","EQ02","EQ03","EQ04","EQ05","EQ11"],params:["MF","MF_grad","r_snow","r_ice","internal_lapse","precip_grad","precip_corr","T0","k_wind"],decisions:["D-004","D-008","D-009","D-012"],calledBy:["run_calibration_v13.py","run_projection.py"]},
-  {name:"calibration.py",role:"Calibration helpers",lines:100,desc:"Cost/likelihood functions, DE/MCMC setup.",details:"Combines stake residuals (inverse-variance), geodetic penalty, snowline chi-squared into objective for DE/MCMC.",eqs:["EQ10"],params:[],decisions:["D-014","D-017","D-028"],calledBy:["run_calibration_v13.py"]},
-  {name:"climate.py",role:"Climate I/O + gap-fill",lines:150,desc:"Load SNOTEL, multi-station gap-fill cascade (D-025).",details:"5-station cascade: Nuka -> MFB -> McNeil -> Anchor -> Kachemak -> Lower Kachemak -> interp -> climatology. 91.3% Nuka, zero NaN output.",eqs:[],params:[],decisions:["D-024","D-025"],calledBy:["run_calibration_v13.py","run_projection.py"]},
-  {name:"snowline_validation.py",role:"Snowline comparison",lines:200,desc:"Rasterize observed snowlines, compare modeled contour.",details:"22 years of digitized snowlines. RMSE, bias, MAE, correlation. Modeled = net balance=0 contour.",eqs:[],params:[],decisions:["D-021","D-022","D-028"],calledBy:["run_snowline_validation.py"]},
-  {name:"behavioral_filter.py",role:"Post-hoc filtering",lines:150,desc:"Screen posterior vs snowline + area RMSE.",details:"Filters MCMC posterior against snowline RMSE and area evolution thresholds.",eqs:[],params:[],decisions:["D-028"],calledBy:["run_behavioral_filter.py"]},
-  {name:"glacier_dynamics.py",role:"Geometry evolution",lines:452,desc:"Delta-h (Huss 2010), Farinotti thickness, bedrock.",details:"Loads Farinotti (2019) ice thickness, computes bedrock, applies Huss delta-h parameterization with dynamic size-class switching. Cells deglaciate when ice < 1m.",eqs:["EQ07","EQ08"],params:["DELTAH_PARAMS","VA_C","VA_GAMMA"],decisions:["D-018"],calledBy:["run_projection.py","animate_glacier_retreat.py"]},
-  {name:"climate_projections.py",role:"CMIP6 processing",lines:200,desc:"Load/bias-correct NEX-GDDP-CMIP6 daily data.",details:"Monthly delta bias correction vs Nuka 1991-2020 climatology (additive T, multiplicative P).",eqs:[],params:[],decisions:["D-019"],calledBy:["run_projection.py"]},
-  {name:"routing.py",role:"Discharge routing",lines:113,desc:"Three parallel linear reservoirs: fast+slow+groundwater.",details:"Routes melt+rain through fast (k=0.3, 60%), slow (k=0.05, 30%), groundwater (k=0.01, 10%). Output in m3/s.",eqs:["EQ09"],params:["k_fast","k_slow","k_gw","f_fast","f_slow"],decisions:["D-019"],calledBy:["run_projection.py"]}
+DATA.geodetic = [
+  {period:"2000-2010",area_m2:39858000,dhdt:-1.2613,err:0.246,dmdtda:-1.0721,err_dm:0.2248},
+  {period:"2010-2020",area_m2:39858000,dhdt:-0.9481,err:0.2257,dmdtda:-0.8059,err_dm:0.2017},
+  {period:"2000-2020",area_m2:39858000,dhdt:-1.1047,err:0.115,dmdtda:-0.939,err_dm:0.1216}
 ];
 
-// ─── EQUATION EXPLANATIONS (multi-paragraph plain English) ───
-const EQ_EXPLAIN = {
-'EQ01': "This is the heart of the entire model -- the single equation that converts weather into melt. Every day, at every point on the glacier, the model asks: \"How warm is it here, and how much sunlight is hitting this exact slope?\" The answer determines how much ice or snow melts.\n\nThe equation has two parts multiplied by temperature. The first part, MF (the melt factor, calibrated at 7.30 mm per degree per day), captures all the \"invisible\" energy sources that melt ice: warm air flowing over the surface, longwave radiation from clouds and the atmosphere, and turbulent heat exchange. These are hard to measure individually, so DETIM lumps them into one empirical number.\n\nThe second part, r times I_pot, adds the effect of direct sunlight. A south-facing slope in full sun gets hammered with radiation; a north-facing slope in a cirque shadow gets almost none. The radiation factor r differs for snow (1.41e-3, more reflective) versus bare ice (2.82e-3, darker and absorbs more). This is a simplified way to handle albedo without measuring it.\n\nThe key insight: this isn't an energy balance -- it's an index model. The temperature isn't being used to compute actual energy fluxes. It's an empirical proxy that happens to correlate well with melt. That's why the model works with off-glacier station temperatures (D-012): the MF absorbs the systematic difference between station temperature and actual surface energy.",
-'EQ02': "This equation is conceptually simple but was the source of the project's most painful bugs. It answers: \"If I know the temperature at the weather station, what's the temperature at any point on the glacier?\"\n\nThe answer uses the environmental lapse rate: air temperature drops about 5 degrees for every 1000 meters of elevation gain. The Nuka SNOTEL station sits at 375m; the glacier spans from 439m (terminus) to 1637m (headwall). So on a summer day when Nuka reads 10C, the terminus (only 64m higher) sees about 9.7C -- still warm enough for vigorous melting. But the headwall (1262m higher) sees only 3.7C -- enough for some melt on sunny days, but much less, and precipitation more likely falls as snow.\n\nThe lapse rate is fixed at -5.0 C/km based on two independent literature sources for Alaskan glaciers: Gardner & Sharp (2009) measured -4.9, and Roth et al. (2023) found -5.0. Earlier calibration attempts let the optimizer tune the lapse rate freely, but it exploited this parameter to compensate for other errors (D-015) -- for example, a too-steep lapse rate combined with a too-low precipitation correction could produce the right glacier-wide balance for the wrong reasons.\n\nGetting the reference elevation right was critical. The first 7 calibration attempts failed because the Nuka station was recorded as 1230m instead of 375m (D-013 -- NRCS reports in feet, not meters!). This placed the glacier BELOW the station, reversing the lapse rate direction and making every cell 3-4C too warm.",
-'EQ03': "Precipitation is the supply side of the glacier's mass balance: how much new snow accumulates each winter determines whether the glacier grows or shrinks. But measuring precipitation on a remote glacier is notoriously difficult, so this equation bridges the gap between a weather station 20km away and the glacier surface.\n\nThree adjustments are applied. First, the raw station measurement is multiplied by a correction factor Cp (calibrated at 1.61). This seems like a lot -- 61% more precipitation than measured -- but it accounts for two real effects: (a) wind blows snow particles past the collection funnel at the SNOTEL gauge (undercatch can be 20-50% for snow), and (b) the glacier sits in a wetter microclimate than the station, receiving more orographic precipitation from moist air masses off the Gulf of Alaska.\n\nSecond, an elevation gradient increases precipitation at higher elevations. At 0.07% per meter, this means the ELA (703m above the station) gets about 49% more precipitation than the station. The accumulation zone near the headwall gets even more. This captures orographic enhancement: as moist air is forced up over the mountains, it cools and drops moisture.\n\nThe effective precipitation correction at the ELA combines both effects: 1.61 x 1.49 = 2.40 times the station measurement. This is consistent with the Wolverine Glacier analog (2.28x), giving confidence the calibrated value is physically reasonable.",
-'EQ04': "This equation makes a critical decision for every precipitation event at every grid cell: does it fall as snow (which accumulates and can persist for years) or rain (which runs off immediately)? The difference has enormous consequences for glacier mass balance.\n\nThe partitioning uses a simple linear transition around a threshold temperature T0. Below T0 minus 1 degree, everything is snow. Above T0 plus 1 degree, everything is rain. In between, there's a gradual mix. This 2-degree transition window reflects reality: precipitation phase depends on local humidity, droplet size, and temperature profile through the atmospheric column, not just surface temperature.\n\nThe calibrated T0 of 0.011C is remarkably close to 0 -- essentially, the freezing point. This makes physical sense for a maritime glacier on the Kenai Peninsula, where moist Gulf of Alaska air masses dominate. In continental climates, T0 might be 1-2C because drier air allows snowflakes to survive slightly above freezing.\n\nThe stakes are high at mid-elevations: near the ELA (1078m), summer temperatures hover around 4-5C, so all precipitation is rain. But in September and October, as temperatures drop through the 0-1C range, the fraction that falls as snow increases rapidly. A warm autumn that delays this transition by even a few weeks can mean hundreds of millimeters less snowfall at the ELA -- enough to shift the annual balance from positive to negative.",
-'EQ05': "A single melt factor cannot simultaneously match the observed melt rates at the ablation zone (804m), the equilibrium line (1078m), and the accumulation zone (1293m). The ablation zone melts much faster per degree of warming than the accumulation zone, even after accounting for the temperature difference.\n\nThis elevation gradient captures several physical effects that DETIM doesn't model explicitly: (1) albedo decreases at lower elevations because snow melts away earlier, exposing darker ice; (2) wind speeds and turbulent heat exchange tend to be higher at exposed lower elevations; (3) longwave radiation from surrounding valley walls is greater at lower elevations; (4) humidity and cloud patterns differ across the 800m elevation range.\n\nThe calibrated gradient of -0.0042 mm/d/K per meter means that the melt factor at the accumulation zone (1293m, 918m above reference) is only 3.44 mm/d/K -- less than half the base MF of 7.30. At the ablation zone (804m, 429m above reference), it's 5.50 mm/d/K. This captures the real-world observation that low-elevation bare ice melts dramatically faster than high-elevation snowfields, even at the same temperature.\n\nA floor of 0.1 mm/d/K prevents unphysical negative values at very high elevations.",
-'EQ06': "This equation computes how much direct sunlight could theoretically reach each point on the glacier under clear skies. It's the I_pot in the core melt equation -- the term that captures topographic effects on melt.\n\nThe calculation chains together several physical components. First, the solar constant (1368 W/m2) -- the energy flux at the top of the atmosphere. Then the earth-sun distance factor, which varies 3.3% through the year (closest in January, farthest in July). Then atmospheric absorption: sunlight must pass through the atmosphere, and the path length depends on both the sun angle (longer path at low angles) and elevation (less atmosphere above high-elevation cells). The atmospheric transmissivity of 0.75 means 25% of direct-beam radiation is absorbed or scattered on a single vertical pass.\n\nFinally, the topographic correction: each cell's slope and aspect determine how directly it faces the sun. A 30-degree south-facing slope at noon receives sunlight almost perpendicular -- maximizing the energy per unit area. A steep north-facing slope may be completely self-shaded for months during winter at latitude 59.66N.\n\nAt Dixon, the radiation contrast is dramatic. In June, south-facing slopes near the terminus can receive a daily mean of over 300 W/m2, while north-facing cirque walls get less than 100 W/m2. This creates visible melt patterns: south-facing glacier surfaces become heavily crevassed and sun-cupped, while adjacent north-facing areas retain snow. The solar lookup table (365 days, 3-hour sub-daily resolution) is precomputed at startup to avoid recalculating expensive trigonometry every timestep.",
-'EQ07': "When a glacier loses mass, it doesn't thin uniformly like an ice cube in a glass. Real glaciers thin most at the terminus (lowest elevations) and least at the headwall (highest elevations). This empirical pattern, documented by Huss et al. (2010) from observations of Swiss glaciers, is encoded in this equation.\n\nThe variable h_r is normalized elevation: 0 at the headwall, 1 at the terminus. The equation produces a thinning \"weight\" at each elevation -- how much of the total annual mass loss is applied there. For Dixon (~40 km2, classified as \"large\" with gamma=6), the thinning is extremely concentrated at the terminus: the terminus weight is over 1000 times larger than the headwall weight.\n\nPhysically, this concentration makes sense. The terminus is at the lowest, warmest elevation, exposed to the most melt. It also receives the least new snow. And as the terminus thins, it reaches bedrock overdeepening areas where warm subglacial water pools, accelerating basal melt.\n\nAs Dixon shrinks below 20 km2 (projected around 2070-2080 under SSP5-8.5), it automatically switches to the \"medium\" size class (gamma=4, more distributed thinning). Below 5 km2, it becomes \"small\" (gamma=2). This dynamic switching captures the observation that small glaciers thin more uniformly because they lack the strong elevation contrast of large valley glaciers.\n\nWhen cumulative thinning at any cell exceeds its ice thickness (from Farinotti 2019), that cell deglaciates -- the surface drops to bedrock, the cell is removed from the glacier mask, and the glacier has permanently lost that area.",
-'EQ08': "This is a simple empirical power law relating glacier area to ice volume, used primarily as a sanity check rather than a core model component. It answers: \"Given that Dixon is 40 km2, roughly how much ice should it contain?\"\n\nThe relationship V = 0.034 * A^1.36 comes from Bahr et al. (1997), who derived it from the physical scaling properties of glacier flow. The exponent 1.36 means that larger glaciers hold proportionally more ice per unit area -- they're thicker, because ice flow hasn't had time to spread the mass as thin.\n\nFor Dixon at 40.1 km2: V = 0.034 x 40.1^1.36 = 5.0 km3. The Farinotti et al. (2019) consensus estimate (computed from 5 independent ice thickness models using radar data, ice flow physics, and surface observations) gives 6.87 km3 -- a ratio of 1.37. This is within the normal range of scatter for the V-A relationship and suggests the Farinotti estimate is reasonable.\n\nThe model uses this as a diagnostic: if the modeled volume after years of geometry evolution diverges more than 3x from the V-A prediction, a warning is raised indicating something may be physically unreasonable.",
-'EQ09': "Meltwater doesn't teleport from the glacier surface to the outlet stream. It travels through a complex network of supraglacial streams, moulins (vertical shafts through the ice), englacial conduits, subglacial channels, and finally through glacial sediments and bedrock fractures. This routing model simplifies all of that into three parallel \"buckets.\"\n\nThe fast reservoir (60% of runoff, draining with a 3-day timescale) represents water that flows quickly over or through the glacier: supraglacial streams on the ice surface, and large englacial/subglacial channels. On a hot sunny day, this component produces a sharp discharge peak the next day or two.\n\nThe slow reservoir (30%, 20-day timescale) represents water that takes longer paths through the subglacial drainage system -- seeping through the distributed drainage network of linked cavities beneath the ice. This produces a broad, sustained contribution to discharge that lags the melt event by weeks.\n\nThe groundwater reservoir (10%, 100-day timescale) represents water that enters the sediment and bedrock beneath the glacier. This provides baseflow even in winter, when surface melt is zero but slowly draining groundwater still feeds the outlet stream.\n\nThe parameters are NOT calibrated because Dixon has no discharge measurements. The values (k_fast=0.3, k_slow=0.05, k_gw=0.01 per day) are typical for temperate glaciers from Hock & Jansson (2005). The main purpose is peak water analysis: as the glacier shrinks under climate warming, there's initially MORE meltwater (tapping the ice reservoir), reaching a peak before declining as the glacier becomes too small to sustain high melt volumes.",
-'EQ10': "This is the objective function that guides the calibration -- it tells the MCMC sampler how well any proposed set of parameters fits ALL the available observations simultaneously. Getting this right determines whether the calibrated model is physically meaningful or just curve-fitting.\n\nThe likelihood has three terms, each addressing a different type of observation. The stake term compares 25 individual mass balance measurements at three elevations against the model's predictions, weighted by the inverse of each measurement's uncertainty squared. Stakes with smaller error bars (better measurements) get more influence. This term constrains the elevation distribution of melt and accumulation.\n\nThe snowline term compares 19 years of satellite-derived snowline elevations against modeled snowline positions. With sigma=75m (accounting for spatial spread within each year, model grid resolution, and the mismatch between observation date and model date), this term constrains the spatial pattern of the snow-ice transition. It was added in D-028 after discovering that post-hoc snowline filtering had zero discriminating power.\n\nThe geodetic term is a hard penalty: if the 20-year average modeled mass balance deviates from the Hugonnet satellite-derived value (-0.939 m w.e./yr) by more than its reported uncertainty (0.122), a steep penalty (lambda=50) is applied. This prevents the optimizer from matching the short-term stake record while violating the long-term mass loss trajectory.\n\nThe MCMC sampler (emcee, 24 walkers, 10,000 steps) explores the 6-dimensional parameter space, spending more time in regions where this likelihood is high. The resulting posterior (1,656 independent samples) represents the range of parameter combinations consistent with all three data types simultaneously.",
-'EQ11': "This equation tracks the snowpack at every grid cell -- the running tally of how much snow is on the ground, updated every day. It's bookkeeping, but it has critical consequences for the melt equation because the surface type (snow vs. ice) determines which radiation factor is used.\n\nEach day, two things happen. First, any snowfall (determined by the precipitation and rain/snow equations) is added to the cell's snow water equivalent (SWE). Second, melt energy (from the DETIM equation) is applied. The melt removes snow first -- if there's 500mm of SWE and 30mm of melt, the SWE drops to 470mm and the surface stays classified as \"snow\" (using the lower radiation factor r_snow). But if the melt exceeds the remaining SWE, the snow is gone and the excess energy melts the underlying ice or firn.\n\nThis creates a critical positive feedback: once snow melts away exposing darker ice, the surface switches from r_snow (1.41e-3) to r_ice (2.82e-3) -- doubling the radiation-driven melt contribution. This \"albedo feedback\" can accelerate melt dramatically at mid-elevations near the ELA, where the snowpack is marginal. A warm spell in June that strips the last snow from the ELA zone triggers weeks of enhanced ice melt for the rest of the summer.\n\nThe firn zone (above the median glacier elevation) uses the snow radiation factor even when SWE=0, reflecting the physical reality that old compacted firn is brighter than bare glacier ice. This three-way surface type classification (snow/firn/ice) is a simplified albedo scheme that avoids needing actual albedo measurements."
+DATA.snowlines = [
+  {year:1995,date:"1995-08-20",source:"landsat-5",mean:1027.3,median:1030.8,min:926.2,max:1155.9,std:55.0,n:780},
+  {year:1999,date:"1999-09-08",source:"landsat-7",mean:1107.4,median:1086.6,min:1040.8,max:1297.0,std:58.3,n:975},
+  {year:2000,date:"2000-08-09",source:"landsat-7",mean:1036.2,median:1021.9,min:960.8,max:1201.4,std:56.1,n:578},
+  {year:2003,date:"2003-08-02",source:"landsat-7",mean:984.3,median:984.8,min:929.6,max:1029.3,std:23.9,n:666},
+  {year:2004,date:"2004-08-29",source:"landsat-7",mean:1203.8,median:1197.2,min:1130.5,max:1340.9,std:50.7,n:752},
+  {year:2005,date:"2005-09-08",source:"landsat-7",mean:1106.7,median:1096.8,min:1046.9,max:1183.9,std:37.6,n:755},
+  {year:2006,date:"2006-09-19",source:"landsat-5",mean:1110.0,median:1108.0,min:1029.6,max:1203.3,std:41.9,n:1002},
+  {year:2007,date:"2007-09-06",source:"landsat-5",mean:1128.9,median:1126.9,min:1036.6,max:1327.0,std:67.3,n:988},
+  {year:2009,date:"2009-09-19",source:"landsat-7",mean:1232.3,median:1224.7,min:1190.9,max:1282.9,std:22.5,n:524},
+  {year:2010,date:"2010-09-15",source:"landsat-7",mean:1086.5,median:1083.5,min:956.1,max:1224.0,std:61.0,n:1139},
+  {year:2011,date:"2011-09-18",source:"landsat-7",mean:1064.8,median:1052.5,min:1013.9,max:1159.1,std:34.4,n:476},
+  {year:2012,date:"2012-10-06",source:"landsat-7",mean:1079.8,median:1071.2,min:1017.6,max:1165.6,std:40.8,n:566},
+  {year:2013,date:"2013-09-15",source:"landsat-8",mean:1158.3,median:1157.6,min:1045.9,max:1311.7,std:57.0,n:2225},
+  {year:2014,date:"2014-09-25",source:"landsat-8",mean:1238.2,median:1250.6,min:1159.2,max:1292.1,std:38.7,n:674},
+  {year:2015,date:"2015-08-27",source:"unknown",mean:1054.6,median:1057.3,min:961.4,max:1132.7,std:48.9,n:915},
+  {year:2016,date:"2016-08-29",source:"landsat-8",mean:1073.8,median:1056.6,min:968.6,max:1193.0,std:55.5,n:799},
+  {year:2017,date:"2017-09-30",source:"sentinel-2",mean:1161.3,median:1161.9,min:1044.4,max:1306.6,std:59.3,n:1744},
+  {year:2018,date:"2018-10-05",source:"sentinel-2",mean:1170.4,median:1171.8,min:1070.5,max:1243.2,std:44.8,n:1456},
+  {year:2019,date:"2019-09-17",source:"sentinel-2",mean:1159.6,median:1152.1,min:1054.1,max:1355.5,std:61.5,n:2420},
+  {year:2020,date:"2020-10-06",source:"sentinel-2",mean:1126.3,median:1124.9,min:1067.4,max:1221.4,std:33.9,n:1045},
+  {year:2021,date:"2021-09-19",source:"sentinel-2",mean:1088.3,median:1076.7,min:1018.4,max:1189.7,std:40.3,n:853},
+  {year:2023,date:"2023-09-29",source:"sentinel-2",mean:1124.8,median:1110.6,min:1065.0,max:1264.6,std:48.7,n:939},
+  {year:2024,date:"2024-09-20",source:"sentinel-2",mean:1166.4,median:1177.9,min:1007.8,max:1338.1,std:69.7,n:1712}
+];
+
+DATA.areas = [
+  {year:2000,area:40.11,source:"manual_digitization"},
+  {year:2005,area:40.11,source:"manual_digitization"},
+  {year:2010,area:39.83,source:"manual_digitization"},
+  {year:2015,area:39.26,source:"manual_digitization"},
+  {year:2020,area:38.59,source:"manual_digitization"},
+  {year:2025,area:38.34,source:"manual_digitization"}
+];
+
+DATA.sensitivity = [
+  {param:"lapse_rate",value:-4.0,geod_mod:-1.631,geod_obs:-0.939,bias:-0.692,stake_rmse:1.800},
+  {param:"lapse_rate",value:-4.5,geod_mod:-1.216,geod_obs:-0.939,bias:-0.277,stake_rmse:1.497},
+  {param:"lapse_rate",value:-5.0,geod_mod:-0.817,geod_obs:-0.939,bias:0.122,stake_rmse:1.227},
+  {param:"lapse_rate",value:-5.5,geod_mod:-0.434,geod_obs:-0.939,bias:0.505,stake_rmse:1.005},
+  {param:"lapse_rate",value:-6.0,geod_mod:-0.063,geod_obs:-0.939,bias:0.876,stake_rmse:0.850},
+  {param:"lapse_rate",value:-6.5,geod_mod:0.296,geod_obs:-0.939,bias:1.235,stake_rmse:0.781},
+  {param:"rice_ratio",value:1.50,geod_mod:-0.773,geod_obs:-0.939,bias:0.166,stake_rmse:1.188},
+  {param:"rice_ratio",value:1.75,geod_mod:-0.795,geod_obs:-0.939,bias:0.144,stake_rmse:1.207},
+  {param:"rice_ratio",value:2.00,geod_mod:-0.817,geod_obs:-0.939,bias:0.122,stake_rmse:1.227},
+  {param:"rice_ratio",value:2.25,geod_mod:-0.839,geod_obs:-0.939,bias:0.100,stake_rmse:1.248},
+  {param:"rice_ratio",value:2.50,geod_mod:-0.862,geod_obs:-0.939,bias:0.077,stake_rmse:1.271},
+  {param:"rice_ratio",value:3.00,geod_mod:-0.906,geod_obs:-0.939,bias:0.033,stake_rmse:1.318}
+];
+
+DATA.lapseProjections = [
+  {lapse:-4.5,scenario:"ssp126",area_p50:19.67,area_p05:17.46,area_p95:26.59,vol_p50:2.168,peak_year:2017,peak_q:8.857},
+  {lapse:-4.5,scenario:"ssp245",area_p50:15.78,area_p05:13.37,area_p95:20.17,vol_p50:1.410,peak_year:2017,peak_q:8.857},
+  {lapse:-4.5,scenario:"ssp585",area_p50:5.41,area_p05:3.88,area_p95:18.35,vol_p50:0.192,peak_year:2017,peak_q:8.857},
+  {lapse:-5.0,scenario:"ssp126",area_p50:25.00,area_p05:21.76,area_p95:32.64,vol_p50:2.914,peak_year:2017,peak_q:8.490},
+  {lapse:-5.0,scenario:"ssp245",area_p50:19.60,area_p05:17.04,area_p95:25.53,vol_p50:2.157,peak_year:2017,peak_q:8.490},
+  {lapse:-5.0,scenario:"ssp585",area_p50:10.49,area_p05:8.79,area_p95:22.57,vol_p50:0.516,peak_year:2017,peak_q:8.490},
+  {lapse:-5.5,scenario:"ssp126",area_p50:31.67,area_p05:28.13,area_p95:37.37,vol_p50:4.020,peak_year:2018,peak_q:8.100},
+  {lapse:-5.5,scenario:"ssp245",area_p50:25.17,area_p05:21.07,area_p95:32.06,vol_p50:2.937,peak_year:2018,peak_q:8.100},
+  {lapse:-5.5,scenario:"ssp585",area_p50:13.91,area_p05:13.30,area_p95:29.23,vol_p50:1.073,peak_year:2065,peak_q:8.726}
+];
+
+DATA.bestParams = {
+  MF:7.110,MF_grad:-0.00411,r_snow:0.00196,r_ice:0.00392,
+  precip_grad:0.000694,precip_corr:1.621,T0:0.000254,
+  lapse_rate:-5.0,k_wind:0.0
 };
 
-// ─── EQUATIONS ───
-const EQUATIONS = [
-  {id:"EQ01",name:"DETIM Method 2 Melt",latex:"M = (\\text{MF} + r \\cdot I_{\\text{pot}}) \\cdot T \\quad (T>0)",pe:"Daily melt = temperature x (melt factor + radiation factor x solar radiation). Hock 1999 Method 2.",code:"melt.py:66-68\nM = (MF + r * I) * T * dt_days",vars:[["M","Melt","mm/d","0-50"],["MF","Melt factor","mm/d/K","7.30 (cal)"],["r","Rad. factor","mm m2/W/d/K","1.41e-3"],["I_pot","Solar radiation","W/m2","0-500"],["T","Temperature","C","-30 to +20"]],ex:"ABL July: (7.30+0.00141x280)x5.9 = 45.4 mm/d",cite:"Hock (1999) J. Glaciol. 45(149)",conf:"high",decs:["D-001","D-004"]},
-  {id:"EQ02",name:"Temperature Distribution",latex:"T_{cell} = T_{ref} + \\lambda(z_{cell}-z_{ref})",pe:"Lapse-rate extrapolation. -5.0 C/km fixed from literature.",code:"fast_model.py:144-145\nT_cell = T_ref + internal_lapse * dz",vars:[["T_cell","Cell temp","C","computed"],["lambda","Lapse","C/m","-0.005 fixed"],["z","Elevation","m","439-1637"]],ex:"ELA 1078m, Nuka 8.0C: T = 8.0-0.005x703 = 4.5C",cite:"Gardner & Sharp (2009)",conf:"high",decs:["D-012","D-013","D-015"]},
-  {id:"EQ03",name:"Precipitation Distribution",latex:"P_{cell} = P_{stn} \\cdot C_p \\cdot (1+\\gamma_p \\Delta z)",pe:"Station precip corrected for undercatch + elevation gradient.",code:"fast_model.py:151\nP_cell = P * precip_corr * (1+precip_grad*dz)",vars:[["P_cell","Cell precip","mm/d","0-60"],["C_p","Correction","","1.61 (cal)"],["gamma_p","Gradient","1/m","0.0007 (cal)"]],ex:"Nuka 10mm, ELA dz=703m: 10x1.61x1.49 = 24 mm/d",cite:"Standard orographic model",conf:"high",decs:["D-013","D-016"]},
-  {id:"EQ04",name:"Rain/Snow Partitioning",latex:"f_{snow} = \\begin{cases}1&T<T_0{-}1\\\\0.5(T_0{+}1{-}T)&\\text{between}\\\\0&T>T_0{+}1\\end{cases}",pe:"Linear transition over 2C window around T0. Calibrated T0 near 0C.",code:"fast_model.py:28-35\nif T<=T0-1: return 1.0 ...",vars:[["f_snow","Snow fraction","[0,1]","0-1"],["T0","Threshold","C","0.011 (cal)"]],ex:"T=0.5, T0=0.011: f = 0.5(1.011-0.5) = 0.26",cite:"Hock (2005), Rounce et al. (2020)",conf:"high",decs:["D-009"]},
-  {id:"EQ05",name:"Elevation-Dependent MF",latex:"MF_{cell} = MF + MF_{grad}(z_{cell}-z_{ref})",pe:"Melt factor decreases with elevation (drier air, higher albedo). Floor at 0.1.",code:"fast_model.py:175-177\nMF_cell = MF + MF_grad * dz",vars:[["MF_grad","Gradient","mm/d/K/m","-0.0042 (cal)"]],ex:"ACC 1293m: 7.30+(-0.0042)(918) = 3.44. ABL 804m: 5.50",cite:"Hock (1999)",conf:"high",decs:["D-008"]},
-  {id:"EQ06",name:"Potential Clear-Sky Radiation",latex:"I_{pot}=I_0(r_m/r)^2\\psi_a^{P/P_0\\sec Z}\\cos\\Theta/\\cos Z",pe:"Direct sunlight on slope accounting for solar geometry, atmosphere, and terrain.",code:"solar.py:78-116\nI_horiz = SOLAR_CONSTANT*r2*(PSI_A**exp)*cz",vars:[["I_0","Solar constant","W/m2","1368"],["psi_a","Transmissivity","","0.75"],["Z","Zenith","rad","0-pi/2"]],ex:"June 21 noon, ELA: ~860 W/m2 horiz, ~280 W/m2 daily mean",cite:"Oke (1987), Hock (1999)",conf:"high",decs:["D-001"]},
-  {id:"EQ07",name:"Delta-h Geometry",latex:"\\Delta h=(h_r+a)^\\gamma+b(h_r+a)+c",pe:"Thinning pattern: maximum at terminus (h_r=1), minimum at headwall (h_r=0). Size-class dependent.",code:"glacier_dynamics.py:193-198\nval = x**gamma + b*x + c",vars:[["h_r","Norm. elevation","[0,1]","0=head,1=term"],["gamma,a,b,c","Coefficients","","size-dependent"]],ex:"Large class, terminus: (0.98)^6+0.12(0.98) = 1.00. Headwall: 0.",cite:"Huss et al. (2010) HESS",conf:"high",decs:["D-018"]},
-  {id:"EQ08",name:"Volume-Area Scaling",latex:"V=0.034 A^{1.36}",pe:"Power-law glacier volume from area. Consistency check vs Farinotti.",code:"glacier_dynamics.py:96\nvolume_km3 = VA_C * area**VA_GAMMA",vars:[["V","Volume","km3","0-10"],["A","Area","km2","0-40"]],ex:"40.1 km2: V = 0.034x40.1^1.36 = 5.0 km3 (Farinotti: 6.87)",cite:"Bahr et al. (1997)",conf:"high",decs:["D-018"]},
-  {id:"EQ09",name:"Linear Reservoir Routing",latex:"Q_i=k_iS_i,\\; S_i(t{+}1)=S_i+f_iR-Q_i",pe:"3 parallel reservoirs: fast (60%, k=0.3/d), slow (30%, k=0.05/d), groundwater (10%, k=0.01/d).",code:"routing.py:57-80\nS_fast += f_fast*input; out = k_fast*S_fast",vars:[["k_i","Recession","1/d","0.3/0.05/0.01"],["f_i","Fraction","","0.6/0.3/0.1"]],ex:"40.1e6 m2, 15mm runoff: fast out = 0.3x861k = 258k m3/d = 3.0 m3/s",cite:"Hock & Jansson (2005)",conf:"high",decs:["D-019"]},
-  {id:"EQ10",name:"MCMC Log-Likelihood",latex:"\\ln L=-\\tfrac{1}{2}\\sum(m_i{-}o_i)^2/\\sigma_i^2-\\tfrac{1}{2}\\sum(s_j^{mod}{-}s_j^{obs})^2/\\sigma_{sl}^2-\\lambda\\max(0,|B^{mod}{-}B^{geo}|{-}\\sigma_{geo})",pe:"Stakes (inv-variance) + snowlines (sigma=75m) + geodetic hard penalty (lambda=50).",code:"run_calibration_v13.py:~200-280",vars:[["sigma_sl","Snowline unc.","m","75"],["lambda","Geo penalty","","50"]],ex:"Stakes chi2=178, snowline chi2=27, geo ok: ln L = -103",cite:"Rounce et al. (2020), emcee",conf:"medium",decs:["D-014","D-017","D-028"]},
-  {id:"EQ11",name:"Snowpack Tracking",latex:"SWE(t{+}1)=SWE(t)+P_{snow}-\\min(SWE,M)",pe:"Snow added, melt subtracted (snow first, then ice). Surface type drives radiation factor.",code:"snowpack.py:51-73\nswe += snowfall; melt_snow = min(swe, melt)",vars:[["SWE","Snow water eq.","mm","0-3000"]],ex:"SWE=500, snow=5, melt=30: SWE=475mm, surface=snow",cite:"Hock (1999)",conf:"high",decs:["D-005"]}
+DATA.calSummary = {
+  version:13,id:"CAL-013",method:"Multi-objective DE+MCMC (stakes+geodetic+snowline) + area filter",
+  decision:"D-028",n_samples:1656,acceptance:0.368,
+  wall_time_h:11.2,de_seeds:[42,123,456,789,2024],n_modes:1,
+  de_best_cost:5.343,
+  posteriorRanges:{MF:[7.06,7.58],precip_corr:[1.47,1.74],MF_grad:[-0.0045,-0.0038],
+    r_snow:[0.0017,0.0022],precip_grad:[0.0004,0.0010],T0:[0.0,0.01]}
+};
+
+DATA.constants = {
+  LATITUDE:59.66,LONGITUDE:-150.88,ELEV_MIN:439,ELEV_MAX:1637,
+  GLACIER_AREA:40.1,SNOTEL_ELEV:375,DIXON_AWS_ELEV:1078,
+  SOLAR_CONSTANT:1368,PSI_A:0.75,ICE_DENSITY:900,WATER_DENSITY:1000,
+  TARGET_RESOLUTION:50,WIND_AZIMUTH:100,WIND_SEARCH_DIST:300,
+  VA_C:0.0340,VA_GAMMA:1.36
+};
+
+// ── MODULES ─────────────────────────────────────────────────────────
+
+DATA.modules = [
+  {name:"config.py",path:"dixon_melt/config.py",lines:193,category:"Core",
+   deps:[],decisions:["D-013","D-015","D-017","D-023"],
+   description:"Site-specific configuration and physical constants for Dixon Glacier. Contains all elevation references, station metadata, temperature transfer coefficients, gap-filling parameters, default model parameters, physical constants, delta-h coefficients, and routing defaults.\n\nThis file is the single source of truth for every number in the model that is not a calibrated parameter. Every correction to elevation data (D-013: Nuka from 1230m to 375m; D-023: Dixon AWS from 804m to 1078m) propagated through config.py first. The multi-station gap-filling coefficients (D-025) live here as monthly slope/intercept arrays computed from overlapping SNOTEL records.\n\nThe default parameters serve as initial guesses for calibration and as the parameter set used when running the model outside calibration. The fixed parameters (lapse_rate = -5.0 C/km, r_ice = 2x r_snow, k_wind = 0) were deliberately removed from calibration (D-015, D-017) to prevent equifinality.\n\nIf any constant here were wrong, the entire model would be silently miscalibrated. The Nuka elevation error (D-013) is the clearest example: 855m of wrong elevation caused every calibration from CAL-001 through CAL-007 to fail, and the error was invisible until someone checked the NRCS website and noticed the units were feet, not meters.",
+   equations:["All constants: see parameter table"],
+   params:[
+     {name:"SNOTEL_ELEV",val:"375.0 m",desc:"Nuka SNOTEL elevation (1230 ft converted)"},
+     {name:"DIXON_AWS_ELEV",val:"1078.0 m",desc:"On-glacier AWS at ELA site"},
+     {name:"PSI_A",val:"0.75",desc:"Clear-sky atmospheric transmissivity"},
+     {name:"TARGET_RESOLUTION",val:"50.0 m",desc:"Model grid cell size"},
+     {name:"VA_C / VA_GAMMA",val:"0.034 / 1.36",desc:"Volume-area scaling (Bahr et al. 1997)"}
+   ]},
+
+  {name:"fast_model.py",path:"dixon_melt/fast_model.py",lines:369,category:"Core",
+   deps:["config.py"],decisions:["D-004","D-007","D-009","D-012","D-013"],
+   description:"The Numba-compiled simulation kernel -- the computational heart of the model. This single @njit(parallel=True) function runs the full DETIM physics for an arbitrary time period on the entire glacier grid, returning cumulative melt, accumulation, daily runoff, stake balances, glacier-wide balance, and end-of-run SWE.\n\nPhysically, fast_model.py implements the daily loop that every glacier model needs: for each day, distribute temperature from the reference station to every grid cell using a lapse rate, partition precipitation into rain and snow using a threshold temperature with a 2-degree transition zone, compute potential melt using the DETIM equation (MF + r_surface * I_pot) * T+, track snowpack evolution, and accumulate mass balance. The elevation-dependent melt factor (MF_grad) reduces melt efficiency at higher elevations, capturing the integrated effects of lower temperatures, higher albedo, and less absorbed longwave radiation.\n\nThe function takes raw Nuka SNOTEL temperature at 375m and applies identity transfer (alpha=1, beta=0 for all months, per D-012) followed by the calibrated lapse rate to reach each grid cell. This design means the melt factor MF implicitly absorbs the ~3C katabatic cooling that exists between free-air and on-glacier temperatures -- exactly as Hock (1999) intended for DETIM.\n\nPerformance matters because calibration requires ~250,000 evaluations (5 DE seeds x 200 iterations x 250 population + MCMC). Each evaluation runs the model for 1-25 water years on a 578x233 grid. Numba JIT compilation plus parallel=True across grid cells reduces per-evaluation time from several seconds to ~300ms, making the full calibration feasible in ~20 hours.\n\nIf this function had a bug in temperature distribution, the entire mass balance would be wrong. The elevation reference error (D-006, D-013) is the clearest example: setting ref_elev to 1230m instead of 375m reversed the sign of the lapse correction, making every cell ~3-4C too warm.",
+   equations:["M = (MF + r \\cdot I_{pot}) \\cdot T^+","T_{cell} = T_{nuka} + \\lambda \\cdot (z_{cell} - z_{ref})","P_{cell} = P_{nuka} \\cdot c_p \\cdot (1 + p_g \\cdot (z_{cell} - z_{ref}))"],
+   params:[
+     {name:"MF",val:"7.11 mm/d/K",desc:"Melt factor (MAP from CAL-013)"},
+     {name:"MF_grad",val:"-0.0041 mm/d/K/m",desc:"Elevation gradient of melt factor"},
+     {name:"r_snow",val:"0.00196 mm m2/W/d/K",desc:"Radiation factor for snow"},
+     {name:"r_ice",val:"0.00392 mm m2/W/d/K",desc:"Radiation factor for ice (2x r_snow)"},
+     {name:"lapse_rate",val:"-5.0 C/km",desc:"Fixed temperature lapse rate"},
+     {name:"precip_corr",val:"1.621",desc:"Precipitation correction factor"},
+     {name:"T0",val:"~0.0 C",desc:"Rain/snow threshold temperature"}
+   ]},
+
+  {name:"calibration.py",path:"dixon_melt/calibration.py",lines:169,category:"Core",
+   deps:["model.py","massbalance.py","fast_model.py"],decisions:["D-003","D-005","D-014","D-017","D-028"],
+   description:"The objective function builder for differential evolution calibration. This module defines the mathematical cost function that tells the optimizer how well a given parameter set reproduces observations. It is the bridge between physical measurements (stake mass balance, geodetic mass balance, snowline elevations) and abstract parameter optimization.\n\nThe cost function uses inverse-variance weighting (D-014): each observation contributes (residual / sigma)^2, where sigma is the reported measurement uncertainty. This means the geodetic mass balance (-0.939 +/- 0.122 m w.e./yr over 2000-2020), with its tight uncertainty, naturally dominates the cost function compared to individual stake measurements (+/- 0.10-0.15 m w.e.). A hard penalty (lambda=50) is added when the geodetic residual exceeds the reported uncertainty bounds, preventing the optimizer from sacrificing the 20-year integrated constraint to chase individual stake years.\n\nFor CAL-013 (D-028), snowline elevations were added as a chi-squared term in the MCMC log-likelihood with sigma=75m, combining observed spatial spread, model resolution, and temporal mismatch. This was necessary because post-hoc snowline filtering had zero discriminating power -- all 1000 posterior samples from CAL-012 scored within an 8m RMSE range.\n\nThe function runs the model for each calibration target period (annual Oct-Oct, summer May-Sep, geodetic 2000-2020) and extracts the relevant output. Annual runs start with SWE=0; summer runs initialize with observed winter balance at ELA. This two-initialization approach was a critical fix (D-005) that resolved the SWE double-counting that caused all v1 parameters to hit their bounds.",
+   equations:["\\mathcal{L} = -\\frac{1}{2} \\sum_i \\left(\\frac{y_i - \\hat{y}_i}{\\sigma_i}\\right)^2"],
+   params:[
+     {name:"sigma_stakes",val:"0.10-0.15 m w.e.",desc:"Stake measurement uncertainty"},
+     {name:"sigma_geodetic",val:"0.122 m w.e./yr",desc:"Hugonnet 2000-2020 uncertainty"},
+     {name:"sigma_snowline",val:"75 m",desc:"Combined snowline uncertainty"},
+     {name:"lambda_penalty",val:"50",desc:"Hard geodetic penalty multiplier"}
+   ]},
+
+  {name:"climate.py",path:"dixon_melt/climate.py",lines:606,category:"Data",
+   deps:["config.py"],decisions:["D-002","D-025"],
+   description:"Climate data ingestion, quality control, and multi-station gap-filling. This is the largest module (606 lines) because getting the input forcing right is the most important -- and historically most problematic -- part of the model.\n\nThe module loads Nuka SNOTEL daily data (temperature and precipitation since 1990), converts from imperial to metric (F to C, inches to mm), and fills gaps using a cascade of 5 nearby SNOTEL stations. The gap-filling cascade (D-025) replaced the original ffill().fillna(0) approach that had been silently poisoning calibration: when Nuka had multi-month temperature gaps (e.g., WY2005: 132 of 153 melt-season days missing), fillna(0) set summer temperatures to 0C, killing all melt in those years. The model compensated by cranking up the melt factor to over-melt in clean years.\n\nEach fill station has monthly regression coefficients (T_nuka = slope * T_other + intercept) computed from overlapping valid days, stored in config.py. The cascade fills 91.3% of days from original Nuka data, 6.0% from Middle Fork Bradley, 1.8% from McNeil Canyon, with the remainder from interpolation and climatology. Precipitation uses monthly ratios (Nuka/MFB) for gap periods, most critically WY2020 where 192 days of precipitation were missing, losing 1,019mm of real accumulation.\n\nThe module also handles Dixon AWS data loading for validation, and provides utilities for extracting water-year subsets and computing climatologies. The output is a zero-NaN daily climate file that all downstream components (calibration, snowline validation, projections) consume.\n\nIf the gap-filling were wrong, the geodetic sub-period comparison would fail: the model would produce incorrect decadal mass balances because gap years cluster in 2000-2005.",
+   equations:["T_{nuka} = \\alpha_m \\cdot T_{station} + \\beta_m","P_{nuka} = r_m \\cdot P_{mfb}"],
+   params:[
+     {name:"TEMP_FILL_ORDER",val:"mfb, mcneil, anchor, kachemak, lower_kach",desc:"Station cascade priority"},
+     {name:"Coverage",val:"91.3% Nuka, 6.0% MFB, 1.8% McNeil",desc:"Gap-fill source breakdown"}
+   ]},
+
+  {name:"glacier_dynamics.py",path:"dixon_melt/glacier_dynamics.py",lines:451,category:"Core",
+   deps:["config.py"],decisions:["D-018"],
+   description:"Glacier geometry evolution using the delta-h parameterization of Huss et al. (2010). This module answers the question: as the glacier loses mass, WHERE does it thin, and WHEN do cells deglaciate?\n\nThe delta-h method is an empirical parameterization that distributes a glacier-wide mass change across the elevation profile. The key insight is that glaciers thin most at the terminus and least at the headwall, following a power-law shape that depends on glacier size. For Dixon (~40 km2, a 'large' glacier), the exponent gamma=6 produces a very steep terminus-weighted thinning pattern: the lowest cells receive ~12x more thinning than cells near the headwall.\n\nThe module tracks ice thickness for every grid cell, initialized from the Farinotti et al. (2019) consensus thickness estimate. Each year, the glacier-wide mass balance is converted to a volume change, distributed via delta-h, and subtracted from ice thickness. Cells where ice thickness drops below 1m are removed from the glacier mask -- they have deglaciated, exposing bedrock. The surface DEM is updated each year: thinning cells lower the surface, deglaciated cells snap to bedrock elevation.\n\nDynamic size-class switching is critical for long projections: as Dixon shrinks below 20 km2 (expected mid-century under SSP5-8.5), it transitions to 'medium' glacier coefficients with a less terminus-concentrated thinning pattern. This feedback means retreat accelerates as the glacier enters a different dynamical regime.\n\nThree bugs in the original implementation (D-018) produced qualitatively wrong retreat patterns: wrong size class coefficients, inverted h_r convention (maximum thinning at headwall instead of terminus), and no ice thickness tracking (cells losing 4m/yr for a decade were never removed).",
+   equations:["\\Delta h = (h_r + a)^\\gamma + b(h_r + a) + c","V = c_V \\cdot A^{\\gamma_V}","h_r = \\frac{z_{max} - z}{z_{max} - z_{min}}"],
+   params:[
+     {name:"gamma (large)",val:"6",desc:"Thinning concentration exponent, A > 20 km2"},
+     {name:"a, b, c (large)",val:"-0.02, 0.12, 0.00",desc:"Huss et al. (2010) coefficients"},
+     {name:"VA_C / VA_GAMMA",val:"0.034 / 1.36",desc:"Volume-area scaling"},
+     {name:"ice_min",val:"1 m",desc:"Deglaciation threshold"}
+   ]},
+
+  {name:"snowline_validation.py",path:"dixon_melt/snowline_validation.py",lines:328,category:"Validation",
+   deps:["fast_model.py","config.py","terrain.py"],decisions:["D-021","D-022","D-028"],
+   description:"Independent validation of the model against 22 years of digitized snowline observations (1995-2024). These snowlines were derived from Landsat and Sentinel-2 imagery by manually tracing the snow/ice boundary, then extracting elevations from the IfSAR DEM. They were NEVER used in calibration until D-028 added them to the MCMC likelihood.\n\nFor each observation year, the module runs the model from October 1 to the satellite acquisition date, then extracts the modeled snowline as the contour where net balance (accumulation minus melt) equals zero. The comparison metrics include mean elevation bias, RMSE, correlation, and the balance at observed snowline locations (ideally zero if the model correctly identifies the ELA).\n\nThe structural limitation analysis (D-028) revealed that DETIM produces snowlines that are too spatially uniform: observed snowlines have within-year spatial standard deviations of 24-69m (reflecting wind redistribution, aspect effects, and local topography), while modeled snowlines have standard deviations of only 6-22m (essentially following elevation contours). The model also over-amplifies interannual variability (std 129m vs observed 63m). These limitations are inherent to DETIM's elevation-only precipitation distribution and cannot be resolved by parameter tuning.\n\nYears with >30% missing melt-season temperature data (D-022) are automatically excluded, catching WY2000 and WY2005 where the original fillna(0) approach would have produced unrealistically low snowlines.",
+   equations:["RMSE_{snowline} = \\sqrt{\\frac{1}{N}\\sum(z_{mod} - z_{obs})^2}"],
+   params:[
+     {name:"sigma_snowline",val:"75 m",desc:"Total uncertainty for likelihood"},
+     {name:"nan_threshold",val:"30%",desc:"Max missing melt-season T for inclusion"},
+     {name:"n_years",val:"22 (19 valid after D-022)",desc:"Observation coverage"}
+   ]},
+
+  {name:"behavioral_filter.py",path:"dixon_melt/behavioral_filter.py",lines:418,category:"Validation",
+   deps:["glacier_dynamics.py","fast_model.py","config.py"],decisions:["D-028"],
+   description:"Post-hoc screening of posterior parameter sets against observed glacier area evolution. The behavioral filter runs each candidate parameter set through the full glacier dynamics simulation (2000-2025) and compares modeled area at 6 checkpoint years against manually digitized glacier outlines.\n\nThe filter implements the GLUE (Generalized Likelihood Uncertainty Estimation) philosophy of Beven and Binley (1992): not all parameter sets that fit the calibration data are 'behavioral' -- some produce unrealistic glacier retreat patterns despite matching stake and geodetic mass balance. The area checkpoints add a temporal constraint that the calibration targets lack: the geodetic mass balance only constrains the 20-year MEAN, while area evolution constrains the TRAJECTORY.\n\nFor CAL-013, all 1000 posterior samples passed the 1.0 km2 RMSE threshold, demonstrating that the snowline-informed likelihood (D-028) had already pushed the posterior into a region consistent with observed retreat. This is actually the ideal outcome: it means the in-likelihood constraints are sufficient and the post-hoc filter is not discarding good samples. The filter remains valuable as a safety check for future calibrations.\n\nThe 6 digitized outlines span 2000-2025 at 5-year intervals, showing Dixon retreating from 40.11 km2 to 38.34 km2 (a loss of 1.77 km2 or 4.4%). The retreat is concentrated at the terminus and along thin marginal ice, consistent with the delta-h thinning pattern.",
+   equations:["RMSE_{area} = \\sqrt{\\frac{1}{N}\\sum(A_{mod}(t_i) - A_{obs}(t_i))^2}"],
+   params:[
+     {name:"RMSE threshold",val:"1.0 km2",desc:"Maximum allowed area RMSE"},
+     {name:"Checkpoints",val:"2000, 2005, 2010, 2015, 2020, 2025",desc:"5-year intervals"},
+     {name:"Pass rate (CAL-013)",val:"1000/1000 (100%)",desc:"All samples behavioral"}
+   ]},
+
+  {name:"solar.py",path:"dixon_melt/solar.py",lines:187,category:"Physics",
+   deps:["config.py"],decisions:["D-001"],
+   description:"Computation of potential clear-sky direct solar radiation (I_pot) for every grid cell on every day of the year. This is the 'enhanced' in 'Enhanced Temperature Index' -- what separates DETIM Method 2 from a basic degree-day model.\n\nThe module computes the sun's position (declination, hour angle, zenith, azimuth) for Dixon's latitude (59.66N) at sub-hourly resolution, then traces the solar beam path to determine whether each grid cell is illuminated or shaded by surrounding topography. The result is a 365 x nrows x ncols lookup table of daily integrated radiation in W/m2, precomputed once and reused for every model run.\n\nAt Dixon's high latitude, solar geometry creates dramatic spatial variability: south-facing slopes at the terminus receive 3-4x more radiation than north-facing headwall slopes. In midsummer (DOY 172), the sun is above the horizon for ~19 hours, but much of the glacier's northern aspect receives only oblique illumination. The shading calculation uses the terrain module's horizon angles to block direct beam when the sun is below the local horizon.\n\nThe radiation factors r_snow and r_ice multiply I_pot in the melt equation, allowing the model to differentiate melt rates between snow-covered and ice-exposed surfaces at the same temperature. The ratio r_ice/r_snow (fixed at 2.0) captures the albedo feedback: bare ice absorbs roughly twice as much shortwave radiation as snow.",
+   equations:["I_{pot} = S_0 \\cdot \\psi_a^{P/(P_0 \\cos\\theta_z)} \\cdot \\cos\\theta_i","\\cos\\theta_i = \\cos\\theta_z\\cos\\beta + \\sin\\theta_z\\sin\\beta\\cos(\\phi_s - \\phi_n)"],
+   params:[
+     {name:"S_0",val:"1368 W/m2",desc:"Solar constant"},
+     {name:"PSI_A",val:"0.75",desc:"Atmospheric transmissivity"},
+     {name:"Resolution",val:"Sub-hourly integration",desc:"Temporal resolution for solar geometry"}
+   ]},
+
+  {name:"terrain.py",path:"dixon_melt/terrain.py",lines:238,category:"Data",
+   deps:["config.py"],decisions:["D-011"],
+   description:"DEM loading, reprojection, slope/aspect computation, horizon angle calculation, and wind exposure (Sx) mapping. This module transforms the raw 5m IfSAR DEM into all the terrain derivatives the model needs.\n\nThe DEM is resampled from 5m to the model resolution (50m for calibration, finer for visualization). Slope and aspect are computed using standard finite differences, then used by the solar module to calculate incident radiation angles. Horizon angles are computed along 72 azimuth directions to enable topographic shading.\n\nThe Winstral Sx parameter (D-011) quantifies wind exposure: for each cell, a search along the prevailing wind direction (100 degrees, ESE) finds the maximum upward angle to the horizon within 300m upwind. Positive Sx means the cell is sheltered (in the lee), negative means exposed (on the windward side). The Sx field is normalized to [-1, +1] and zero-meaned over the glacier so that wind redistribution conserves mass.\n\nAlthough k_wind was set to zero in calibration (CAL-007 converged to k_wind~0), the Sx field remains computed and stored because the snowline validation revealed systematic spatial patterns (western/southern branch snowlines 100m lower than eastern) that match the expected wind deposition pattern. The Sx field is available for future work if additional constraints become available.",
+   equations:["S_x = \\max\\left(\\arctan\\frac{z_{upwind} - z_{cell}}{d}\\right)","P_{cell} = P_{base} \\cdot (1 + k_{wind} \\cdot S_x)"],
+   params:[
+     {name:"WIND_AZIMUTH",val:"100 deg (ESE)",desc:"Prevailing wind during precipitation"},
+     {name:"WIND_SEARCH_DIST",val:"300 m",desc:"Maximum upwind search distance"},
+     {name:"DEM source",val:"IfSAR 2010, 5m",desc:"Input DEM for all terrain products"}
+   ]},
+
+  {name:"model.py",path:"dixon_melt/model.py",lines:264,category:"Core",
+   deps:["config.py","solar.py","terrain.py","fast_model.py"],decisions:["D-009"],
+   description:"The Pandas-based orchestrator that wraps the Numba kernel for analysis runs. While fast_model.py handles the computation, model.py manages I/O, parameter setting, grid initialization, and output formatting. It provides a clean DETIMModel class interface for scripts that need more than raw arrays.\n\nThe DETIMModel class loads the DEM, computes all terrain derivatives (slope, aspect, horizon angles, Sx), builds the 365-day solar radiation lookup table, and provides methods like run_period(), set_params(), and reset(). It produces DataFrame outputs with dates, spatial maps, and summary statistics that are more convenient for analysis and plotting than the raw Numba arrays.\n\nThis module exists because Numba functions cannot handle Pandas DataFrames, file I/O, or complex object-oriented patterns. The two-code-path trade-off (D-004) means any physics change must be implemented in BOTH fast_model.py and model.py to keep them in sync.",
+   equations:["Same as fast_model.py"],
+   params:[]},
+
+  {name:"climate_projections.py",path:"dixon_melt/climate_projections.py",lines:235,category:"Projection",
+   deps:["config.py","climate.py"],decisions:["D-019"],
+   description:"CMIP6 climate scenario loading and bias correction for glacier projections. This module bridges the gap between global climate model output (0.25-degree, daily, raw) and the glacier-specific forcing the DETIM model needs.\n\nBias correction uses the monthly delta method against Nuka SNOTEL 1991-2020 climatology: for temperature, the GCM's monthly mean bias is subtracted (additive correction); for precipitation, the ratio of observed to GCM monthly totals is applied (multiplicative correction). This preserves the GCM's interannual variability and trend while anchoring the climatology to local observations.\n\nThe module loads 5 GCMs (ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR, MRI-ESM2-0, NorESM2-MM) across 3 SSP scenarios. The GCM selection follows Rounce et al. (2023), choosing models with good high-latitude performance from diverse modeling centers to span the climate model structural uncertainty.\n\nEach GCM provides 2015-2100 daily temperature and precipitation at the nearest 0.25-degree pixel to Dixon Glacier. The bias-corrected output feeds directly into run_projection.py for ensemble glacier simulations.",
+   equations:["T_{corr}(d) = T_{gcm}(d) - (\\overline{T}_{gcm,m} - \\overline{T}_{obs,m})","P_{corr}(d) = P_{gcm}(d) \\cdot \\frac{\\overline{P}_{obs,m}}{\\overline{P}_{gcm,m}}"],
+   params:[
+     {name:"Reference period",val:"1991-2020",desc:"Nuka SNOTEL climatology for bias correction"},
+     {name:"GCMs",val:"5 (ACCESS-CM2, EC-Earth3, MPI, MRI, NorESM2)",desc:"CMIP6 model ensemble"}
+   ]},
+
+  {name:"temperature.py",path:"dixon_melt/temperature.py",lines:46,category:"Physics",
+   deps:["config.py"],decisions:["D-007","D-012"],
+   description:"Temperature distribution utilities, including the statistical transfer from off-glacier stations to on-glacier temperatures. Currently implements identity transfer (D-012): the raw Nuka SNOTEL temperature is used directly, and the calibrated lapse rate in fast_model.py handles elevation adjustment.\n\nThis module's history illustrates a key lesson: DETIM is designed for off-glacier index temperatures, not literal on-glacier surface temperatures. The statistical katabatic transfer (D-007, D-010) made temperatures too cold, requiring physically unreasonable melt factors (>19 mm/d/K). Reverting to identity transfer (D-012) allowed MF to settle at ~7 mm/d/K, well within the Braithwaite (2008) literature range.",
+   equations:["T_{ref} = \\alpha_m \\cdot T_{nuka} + \\beta_m"],
+   params:[
+     {name:"alpha",val:"1.0 (all months)",desc:"Identity transfer slope"},
+     {name:"beta",val:"0.0 (all months)",desc:"Identity transfer intercept"}
+   ]},
+
+  {name:"precipitation.py",path:"dixon_melt/precipitation.py",lines:67,category:"Physics",
+   deps:["config.py"],decisions:["D-013","D-016"],
+   description:"Precipitation distribution from the reference station to glacier grid cells. Applies a precipitation correction factor (precip_corr) for gauge undercatch and spatial transfer, plus an elevation-dependent gradient (precip_grad) that increases precipitation with altitude.\n\nThe correction factor (1.621 from CAL-013) accounts for three effects: (1) SNOTEL gauge undercatch of snow (typically 10-30%), (2) orographic enhancement between Nuka (375m, coastal foothills) and Dixon (439-1637m, deep in the Kenai Mountains), and (3) any systematic precipitation difference between the SNOTEL site and the glacier catchment. The value is well within the literature range (PyGEM caps at 3.0, Wolverine Glacier analog is 2.28x).\n\nThe elevation gradient (0.000694 per meter from CAL-013) means precipitation increases by ~7% per 100m of elevation gain, adding about 50% more precipitation at the headwall (1637m) compared to the terminus (439m). This gradient, combined with the temperature-dependent rain/snow partition, creates the accumulation pattern that determines the equilibrium line altitude.",
+   equations:["P_{cell} = P_{nuka} \\cdot c_p \\cdot (1 + p_g \\cdot (z_{cell} - z_{ref}))"],
+   params:[
+     {name:"precip_corr",val:"1.621",desc:"Gauge undercatch + spatial transfer"},
+     {name:"precip_grad",val:"0.000694 /m",desc:"Elevation gradient (~7%/100m)"}
+   ]},
+
+  {name:"melt.py",path:"dixon_melt/melt.py",lines:70,category:"Physics",
+   deps:["config.py","solar.py"],decisions:["D-001","D-008"],
+   description:"The DETIM melt calculation: M = (MF + r * I_pot) * T+ where T+ = max(T, 0). This is the core equation from Hock (1999) Method 2 that gives the model its name.\n\nThe melt factor MF captures all non-radiative energy fluxes (sensible heat, latent heat, longwave radiation) as a single empirical parameter. The radiation factors r_snow and r_ice add spatial structure by modulating melt based on clear-sky incoming solar radiation. On a south-facing slope receiving 300 W/m2 of potential radiation, r_ice = 0.00392 adds 1.18 mm/d/K to the base melt factor -- a significant enhancement.\n\nThe elevation-dependent melt factor (D-008) MF(z) = MF + MF_grad * (z - z_ref) decreases melt efficiency at higher elevations. With MF_grad = -0.0041 mm/d/K/m, the melt factor drops from ~9.0 at the terminus (439m) to ~4.0 at the headwall (1637m), capturing the integrated effects of lower air density, higher albedo, and stronger re-radiation at altitude.",
+   equations:["M = (MF + r_{snow/ice} \\cdot I_{pot}) \\cdot T^+","MF(z) = MF + MF_{grad} \\cdot (z - z_{ref})"],
+   params:[
+     {name:"MF",val:"7.11 mm/d/K",desc:"Base melt factor at reference elevation"},
+     {name:"r_snow",val:"0.00196 mm m2/W/d/K",desc:"Snow radiation factor"},
+     {name:"r_ice",val:"0.00392 mm m2/W/d/K",desc:"Ice radiation factor (2x r_snow)"},
+     {name:"MF_grad",val:"-0.0041 mm/d/K/m",desc:"Elevation gradient"}
+   ]},
+
+  {name:"snowpack.py",path:"dixon_melt/snowpack.py",lines:98,category:"Physics",
+   deps:[],decisions:["D-005"],
+   description:"Snow water equivalent (SWE) tracking and the firn/ice surface-type switch. Each grid cell maintains a SWE state that accumulates from snowfall and depletes from melt. When SWE reaches zero, the surface transitions from snow to ice, switching the radiation factor from r_snow to r_ice (doubling the radiation-driven melt component).\n\nThe initial SWE state is critical for calibration (D-005): annual runs (Oct 1 start) initialize with SWE=0 and accumulate naturally, while summer runs (May start) use observed winter balance. The v1 calibration double-counted winter accumulation by initializing annual runs with observed SWE AND accumulating from daily precipitation, forcing MF to its lower bound to compensate.",
+   equations:["SWE(t+1) = SWE(t) + S(t) - M_{snow}(t)"],
+   params:[
+     {name:"SWE init (annual)",val:"0.0 mm",desc:"Oct 1 start, accumulates naturally"},
+     {name:"SWE init (summer)",val:"Observed winter balance",desc:"From ELA stake measurement"}
+   ]},
+
+  {name:"massbalance.py",path:"dixon_melt/massbalance.py",lines:62,category:"Core",
+   deps:[],decisions:["D-003"],
+   description:"Mass balance computation utilities: loading stake observations, computing glacier-wide specific balance, and formatting output. The glacier-wide balance is computed as the area-weighted mean of all grid cell balances (accumulation minus melt, converted to meters water equivalent).\n\nStake observations are loaded from CSV with site ID, period type (annual/summer/winter), year, dates, observed mass balance, uncertainty, and elevation. The 27 rows span 3 sites (ABL, ELA, ACC) across 3 water years (2023-2025), providing the point-scale calibration targets.",
+   equations:["\\bar{B} = \\frac{1}{A}\\sum_{i} b_i \\cdot \\Delta A_i"],
+   params:[]},
+
+  {name:"routing.py",path:"dixon_melt/routing.py",lines:112,category:"Physics",
+   deps:["config.py"],decisions:["D-019"],
+   description:"Parallel linear reservoir discharge model (Hock and Jansson 2005) that converts daily glacier melt and rainfall into a hydrograph. Three reservoirs -- fast (supraglacial/ice surface), slow (subglacial), and groundwater -- each with characteristic recession times, combine to produce the delayed and attenuated discharge response.\n\nMelt and rain-on-glacier are partitioned into the three reservoirs (60% fast, 30% slow, 10% groundwater by default). Each reservoir drains exponentially: Q = k * S, where S is storage and k is the recession coefficient. The fast reservoir (k=0.3/day) responds within 1-3 days, the slow reservoir (k=0.05/day) integrates over weeks, and the groundwater reservoir (k=0.01/day) maintains baseflow through winter.\n\nRouting is primarily used in projections to compute peak water timing and magnitude -- the year when glacier melt contribution to downstream discharge reaches its maximum before declining as the glacier shrinks.",
+   equations:["Q_i(t) = k_i \\cdot S_i(t)","S_i(t+1) = S_i(t) + f_i \\cdot R(t) - Q_i(t)"],
+   params:[
+     {name:"k_fast",val:"0.3 /day",desc:"Fast reservoir recession"},
+     {name:"k_slow",val:"0.05 /day",desc:"Slow reservoir recession"},
+     {name:"k_gw",val:"0.01 /day",desc:"Groundwater recession"},
+     {name:"f_fast / f_slow",val:"0.6 / 0.3",desc:"Partitioning fractions"}
+   ]}
 ];
 
-// ─── DECISIONS (28) ───
-const DECISIONS = [
-  {id:"D-001",t:"Model Selection -- DETIM Method 2",d:"Pre-2026-03-06",s:"Hock (1999) Method 2: M = (MF + r*I_pot)*T. Balances realism vs data.",alt:"Degree-day (too simple), DEBAM (needs more data).",cit:[{t:"Hock (1999) J. Glaciol. 45(149)",r:"primary"}],p:["MF","r_snow","r_ice"],dep:[],fwd:["D-004","D-008","D-009"],imp:"Defines entire framework.",fl:["single_source"]},
-  {id:"D-002",t:"Climate Source -- Nuka SNOTEL + Dixon AWS",d:"Prior",s:"Nuka (375m, 20km) + Dixon AWS (1078m ELA, summer 2024-25).",alt:"Reanalysis (biased in terrain).",cit:[{t:"NRCS SNOTEL",r:"primary"}],p:[],dep:[],fwd:["D-013","D-023","D-025"],imp:"All climate inputs.",fl:[]},
-  {id:"D-003",t:"Calibration Targets -- Stakes + Geodetic",d:"Prior",s:"Stake MB at 3 elevations (2023-25) + Hugonnet geodetic 2000-2020.",alt:"Single target (equifinality).",cit:[{t:"Hugonnet et al. (2021) Nature",r:"primary"},{t:"Field measurements",r:"primary"}],p:[],dep:[],fwd:["D-014","D-016","D-017","D-028"],imp:"Two independent constraints.",fl:[]},
-  {id:"D-004",t:"Numba JIT Compilation",d:"Prior",s:"@njit(parallel=True) kernel. ~300ms/eval enables 240k MCMC evals in 8-10hrs.",alt:"NumPy (3-5x slower).",cit:[],p:[],dep:["D-001"],fwd:[],imp:"Enables Bayesian calibration.",fl:["judgment"]},
-  {id:"D-005",t:"Fix SWE Double-Counting",d:"2026-03-06",s:"v1 double-counted winter snowpack. Fix: SWE=0 at Oct 1.",alt:"Bug fix.",cit:[],p:["MF"],dep:[],fwd:[],imp:"Params 8 to 7.",fl:[]},
-  {id:"D-006",t:"Fix Temperature Reference Elevation",d:"2026-03-06",s:"Wrong station elevation made all cells +2.8C too warm.",alt:"Bug fix.",cit:[],p:[],dep:[],fwd:["D-023"],imp:"Fundamental T geometry error.",fl:[]},
-  {id:"D-007",t:"Statistical Temperature Transfer (Superseded)",d:"2026-03-06",s:"Monthly regressions Nuka->Dixon. D-023 showed offset = elevation, not katabatic.",alt:"Simple lapse (adopted D-012).",cit:[{t:"Summer overlap 256 days",r:"primary"}],p:[],dep:["D-002"],fwd:["D-010","D-012"],imp:"Superseded.",fl:["superseded"]},
-  {id:"D-008",t:"Elevation-Dependent Melt Factor",d:"2026-03-06",s:"MF(z) = MF + MF_grad*(z-z_ref). Single MF can't fit 3 elevations.",alt:"Single MF (poor), band MFs (overfit).",cit:[{t:"Hock (1999)",r:"supporting"}],p:["MF_grad"],dep:["D-001"],fwd:[],imp:"+1 param, matches 3 stakes.",fl:[]},
-  {id:"D-009",t:"Architecture Overhaul v4",d:"2026-03-06",s:"Temp transfer, MF_grad, routing, delta-h, projections. 8 free params.",alt:"Incremental changes.",cit:[],p:["MF","MF_grad","r_snow","r_ice","precip_grad","precip_corr","T0"],dep:["D-001","D-007","D-008"],fwd:["D-018","D-019"],imp:"Enables projections.",fl:["judgment"]},
-  {id:"D-010",t:"Winter Katabatic Correction",d:"2026-03-06",s:"Tested CAL-005, did NOT improve. Root cause: spatial precip.",alt:"Standard lapse (adopted).",cit:[{t:"Katabatic theory",r:"context"}],p:[],dep:["D-007"],fwd:["D-011","D-012"],imp:"Rejected.",fl:["rejected"]},
-  {id:"D-011",t:"Wind Redistribution (Winstral Sx)",d:"2026-03-06",s:"Tested CAL-006, k_wind->0. Deferred.",alt:"Uniform precip (current).",cit:[{t:"Winstral et al. (2002) WRR",r:"primary"}],p:["k_wind"],dep:["D-010"],fwd:["D-015"],imp:"k_wind=0.",fl:["deferred"]},
-  {id:"D-012",t:"Identity Temperature Transfer",d:"2026-03-06",s:"Raw Nuka + calibrated lapse. DETIM absorbs micro-climate through MF.",alt:"Statistical transfer (rejected).",cit:[{t:"Hock (1999) index temps",r:"primary"}],p:["lapse_rate","MF"],dep:["D-007","D-010"],fwd:["D-013"],imp:"Key DETIM insight.",fl:[]},
-  {id:"D-013",t:"Nuka Elevation: 1230 ft NOT 1230 m",d:"2026-03-09",s:"NRCS reports feet. Correct to 375m. ROOT CAUSE of CAL-001 thru CAL-007.",alt:"Critical fix.",cit:[{t:"NRCS site 1037: 1230 ft",r:"primary"}],p:["MF","precip_corr"],dep:["D-002","D-012"],fwd:["D-014","D-015","D-016"],imp:"Resolved 7 failed calibrations.",fl:["critical"]},
-  {id:"D-014",t:"Inverse-Variance + Geodetic Penalty",d:"2026-03-09",s:"1/sigma2 weighting. Lambda=50 geodetic hard penalty.",alt:"Equal weights.",cit:[{t:"Zekollari (2023) OGGM",r:"supporting"},{t:"Rounce (2020) PyGEM",r:"supporting"}],p:[],dep:["D-003","D-013"],fwd:["D-016"],imp:"Proper statistical weighting.",fl:[]},
-  {id:"D-015",t:"Fix Lapse, Remove k_wind",d:"2026-03-09",s:"Lapse=-5.0C/km (literature), k_wind=0. Params 9 to 7.",alt:"Calibrate lapse (exploitable).",cit:[{t:"Gardner & Sharp (2009) -4.9",r:"primary"},{t:"Roth et al. (2023) -5.0",r:"supporting"}],p:["lapse_rate","k_wind"],dep:["D-011","D-013"],fwd:["D-017"],imp:"Reduces equifinality.",fl:[]},
-  {id:"D-016",t:"Single Geodetic + Wider precip_corr",d:"2026-03-09",s:"Sub-periods not distinguishable (p>0.30). precip_corr [1.2, 4.0].",alt:"Both sub-periods (contradictory).",cit:[{t:"Hugonnet uncertainties",r:"primary"}],p:["precip_corr"],dep:["D-003","D-013","D-014"],fwd:["D-017"],imp:"Removes contradiction.",fl:[]},
-  {id:"D-017",t:"Bayesian Ensemble (DE + MCMC)",d:"2026-03-09",s:"DE for MAP, emcee (24 walkers, 10k steps). 6 free, 2 fixed params.",alt:"Single best-fit (equifinality).",cit:[{t:"Rounce (2020) PyGEM",r:"primary"},{t:"Foreman-Mackey (2013) emcee",r:"primary"}],p:["MF","MF_grad","r_snow","precip_grad","precip_corr","T0"],dep:["D-015","D-016"],fwd:["D-027","D-028"],imp:"Uncertainty quantification.",fl:[]},
-  {id:"D-018",t:"Delta-h + Ice Thickness Overhaul",d:"2026-03-10",s:"Fixed 3 bugs, added Farinotti (2019) + dynamic size switching.",alt:"Bug fixes.",cit:[{t:"Huss et al. (2010) HESS",r:"primary"},{t:"Farinotti et al. (2019) Nature Geosci.",r:"primary"},{t:"Bahr et al. (1997)",r:"supporting"}],p:[],dep:["D-009"],fwd:["D-019","D-020"],imp:"Enables retreat projections.",fl:[]},
-  {id:"D-019",t:"CMIP6 Projection Pipeline",d:"2026-03-10",s:"NEX-GDDP-CMIP6, 5 GCMs, 3 SSPs, 3-reservoir routing.",alt:"Linear delta (unrealistic).",cit:[{t:"NEX-GDDP-CMIP6 AWS S3",r:"primary"},{t:"Hock & Jansson (2005)",r:"supporting"}],p:[],dep:["D-009","D-018"],fwd:["D-020"],imp:"21st-century projections.",fl:[]},
-  {id:"D-020",t:"Posterior Ensemble Projections",d:"2026-03-11",s:"250 params x 5 GCMs = 1,250 runs/SSP. Peak water SSP245 ~WY2043, SSP585 ~WY2058.",alt:"Single best-fit.",cit:[{t:"Geck (2020) Eklutna",r:"supporting"}],p:[],dep:["D-017","D-018","D-019"],fwd:[],imp:"Peak water with uncertainty.",fl:[]},
-  {id:"D-021",t:"Snowline Validation (22-Year)",d:"2026-03-11",s:"Independent validation. MAP: RMSE 189m, r=0.52. Post-2017 bias +100-175m.",alt:"No spatial validation.",cit:[{t:"Digitized Landsat/Sentinel",r:"primary"}],p:[],dep:["D-003"],fwd:["D-022","D-028"],imp:"Found structural DETIM limitation.",fl:[]},
-  {id:"D-022",t:"Exclude >30% Missing SNOTEL Years",d:"2026-03-11",s:"WY2000/2005 gaps filled with 0C. Exclude if >30% missing May-Sep.",alt:"Climatological fill (D-025).",cit:[],p:[],dep:["D-021"],fwd:["D-025"],imp:"n=21 to 19 valid years.",fl:[]},
-  {id:"D-023",t:"Dixon AWS: 1078m ELA, NOT 804m ABL",d:"2026-03-12",s:"T offset matches 1078m lapse exactly. Same error class as D-013.",alt:"Error correction.",cit:[{t:"MFB cross-validation",r:"primary"}],p:[],dep:["D-002"],fwd:["D-024","D-025"],imp:"Essential for T merge.",fl:["critical"]},
-  {id:"D-024",t:"Multi-Station Analysis",d:"2026-03-12",s:"7 stations vs Dixon AWS. MFB best T predictor (r=0.877).",alt:"Nuka only (gaps).",cit:[{t:"Dixon AWS overlap",r:"primary"}],p:[],dep:["D-002","D-023"],fwd:["D-025"],imp:"Station hierarchy.",fl:[]},
-  {id:"D-025",t:"Multi-Station Gap-Fill Pipeline",d:"2026-03-12",s:"5-station cascade replacing ffill(0). 91.3% Nuka, zero NaN.",alt:"ffill+zero (catastrophic).",cit:[{t:"Transfer RMSE 1-3C",r:"primary"}],p:[],dep:["D-023","D-024"],fwd:["D-026"],imp:"Fixed data quality.",fl:["critical"]},
-  {id:"D-026",t:"Recalibrate with Gap-Filled (Superseded)",d:"2026-03-12",s:"KILLED at DE step 28. Superseded by CAL-012.",alt:"Keep old climate.",cit:[],p:[],dep:["D-025","D-017"],fwd:["D-027"],imp:"Superseded.",fl:["superseded"]},
-  {id:"D-027",t:"Multi-Seed Multimodality Test",d:"2026-03-12",s:"5-seed DE: UNIMODAL. All within 0.003 cost.",alt:"Single seed.",cit:[{t:"Rounce (2020)",r:"primary"}],p:[],dep:["D-017","D-026"],fwd:["D-028"],imp:"Confirmed unimodal.",fl:[]},
-  {id:"D-028",t:"Snowline in MCMC Likelihood",d:"2026-03-18",s:"Snowline (22yr, sigma=75m) in likelihood + area filter. All 1000 passed. Cost 7.17->5.34. CAL-013.",alt:"Post-hoc filter (zero power).",cit:[{t:"D-021 results",r:"primary"},{t:"Rounce (2020)",r:"supporting"}],p:["MF","MF_grad","r_snow","precip_grad","precip_corr","T0"],dep:["D-017","D-021","D-027"],fwd:[],imp:"DEFINITIVE calibration.",fl:[]}
+// ── DECISIONS ───────────────────────────────────────────────────────
+
+DATA.decisions = [
+  {id:"D-001",title:"Model Selection -- DETIM Method 2 (Hock 1999)",date:"Pre-2026-03-06",
+   tags:["design"],
+   text:"Use Distributed Enhanced Temperature Index Model, Method 2: M = (MF + r_snow/ice * I_pot) * T, where T > 0. Balances physical realism (radiation + temperature) against data availability. Dixon Glacier lacks the full energy balance data needed for DEBAM. Method 2 adds spatially distributed potential clear-sky radiation to a basic degree-day model, capturing topographic shading and aspect effects.",
+   alternatives:"Classical degree-day (Method 1): Too simple for a 40 km2 glacier with significant topographic variability (439-1637m). Full energy balance (DEBAM): Requires wind, humidity, albedo, cloud cover at grid scale -- not available.",
+   why:"DETIM Method 2 occupies the sweet spot for Dixon: it captures the first-order spatial physics (topographic shading, aspect-dependent radiation) that matter on a 40 km2 glacier spanning 1200m of elevation, without requiring the meteorological inputs that simply do not exist for this remote site. The key insight from Hock (1999) is that potential clear-sky radiation, which can be computed from topography alone, correlates strongly enough with actual energy inputs that adding it to a temperature index substantially improves spatial melt patterns. For Dixon, south-facing terminus slopes receive 3-4x more radiation than north-facing headwall slopes -- a difference that a basic degree-day model would completely miss."},
+
+  {id:"D-002",title:"Climate Data Source -- Nuka SNOTEL + On-Glacier AWS",date:"Pre-2026-03-06",
+   tags:["data"],
+   text:"Primary forcing from Nuka SNOTEL (site 1037, 375m, ~20 km from Dixon), supplemented by on-glacier AWS at ELA site (1078m; D-023 corrected from 804m) for 2024-2025 summers. Nuka SNOTEL is the nearest long-record station with daily T and P going back to 1990. On-glacier AWS provides ground truth for lapse rate validation during summer field seasons.",
+   alternatives:"ERA5 reanalysis (coarser, different biases), other SNOTEL stations (tested in D-024, Nuka best for precip).",
+   why:"Nuka is the only station within 20km that has both temperature and precipitation records spanning the full geodetic calibration period (2000-2020). While Middle Fork Bradley proved to be a better temperature predictor for Dixon (D-024), it lacks the precipitation correlation. Using Nuka as primary forcing with multi-station gap-filling (D-025) gives the best combination of record length, proximity, and data completeness."},
+
+  {id:"D-003",title:"Calibration Targets -- Stakes + Geodetic",date:"Pre-2026-03-06",
+   tags:["cal"],
+   text:"Multi-objective calibration against: (1) Stake mass balance at 3 elevations (ABL 804m, ELA 1078m, ACC 1293m), 2023-2025, and (2) Geodetic mass balance from Hugonnet et al. (2021), 2000-2020. Stakes provide point-scale seasonal resolution. Geodetic provides glacier-wide decadal constraint. Together they constrain both the spatial pattern and long-term magnitude of mass balance.",
+   alternatives:"Stakes only (insufficient temporal constraint), geodetic only (no spatial constraint), degree-day factor literature values (not site-specific).",
+   why:"The complementarity is the key: stakes tell you the model gets the elevation gradient right (ABL should melt ~5x more than ACC), while geodetic tells you the glacier-wide total is correct over 20 years. Neither alone is sufficient -- a model could match all three stakes perfectly while getting the glacier-wide balance wrong by distributing melt incorrectly across the 36,000 grid cells between stake sites."},
+
+  {id:"D-004",title:"Numba JIT Compilation for Calibration Speed",date:"Pre-2026-03-06",
+   tags:["design"],
+   text:"Implement core simulation loop as a single Numba @njit(parallel=True) function (FastDETIM) for calibration, separate from the Pandas-based orchestrator (DETIMModel) used for analysis. Differential evolution requires ~10,000+ objective evaluations. Each evaluation runs 365-day simulations on a 578x233 grid. JIT compilation reduces per-evaluation time from seconds to ~300 ms.",
+   alternatives:"Pure Python (too slow for calibration), Cython (less portable), Fortran (less maintainable), coarser grid (loses spatial resolution).",
+   why:"The full DE+MCMC calibration (CAL-013) required ~250,000 model evaluations. At 300ms each, that is ~20 hours -- already a weekend-long computation. At the original Python speed of ~3 seconds per evaluation, it would have taken 200+ hours, making iterative calibration design impossible. The trade-off of maintaining two code paths (fast_model.py for calibration, model.py for analysis) is worth the 10x speedup."},
+
+  {id:"D-005",title:"Fix SWE Double-Counting in Calibration v2",date:"2026-03-06",
+   tags:["fix"],
+   text:"Three fixes to calibration objective function: (1) Annual runs (Oct 1 start): Set initial SWE = 0, snowpack accumulates naturally from daily precipitation during Oct-Apr. (2) Summer runs (~May start): Use observed winter balance at ELA as initial SWE. (3) Remove snow_redist parameter (multiplicatively redundant with precip_corr). v1 calibration initialized annual runs with observed winter SWE AND accumulated snow from daily precipitation -- double-counting winter snowpack. The optimizer compensated by pushing MF to lower bound (1.0), r_snow to ~0, and precip_corr/snow_redist/T0 to upper bounds. 5 of 8 parameters hit bounds.",
+   alternatives:"None -- this was a bug, not a design choice.",
+   why:"When you double-count winter accumulation, the model sees roughly 2x the correct snow input. The only way the optimizer can compensate is to suppress melt (MF to minimum) and suppress additional accumulation (precip parameters to extremes). This is the clearest example of how a single initialization bug can corrupt the entire parameter set, producing values that are internally consistent with the bug but physically meaningless. The diagnostic clue was that 5 of 8 parameters hit their bounds -- a strong signal that the model physics are fighting the data."},
+
+  {id:"D-006",title:"Fix Temperature Reference Elevation Mismatch",date:"2026-03-06",
+   tags:["fix"],
+   text:"Change model station_elev from 1230m (SNOTEL) to 804m (Dixon AWS) to match the merged climate data's actual reference elevation. [NOTE: D-023 later corrected Dixon AWS elevation to 1078m. The logic remains valid.] The merged climate file contained temperatures already lapse-adjusted from Nuka to Dixon AWS elevation, but FastDETIM was initialized with SNOTEL_ELEV = 1230m, causing the model to apply the lapse rate from the wrong base elevation. Every grid cell was +2.8C too warm.",
+   alternatives:"None -- this was a bug.",
+   why:"A reference elevation error is invisible in the code because temperatures look reasonable -- they are just shifted. The model compensates by adjusting MF and precip_corr in ways that mask the underlying error. The diagnostic was that even after fixing the SWE double-counting (D-005), the cost remained at ~15 and MF was still at 1.0. Two bugs compounding made diagnosis much harder."},
+
+  {id:"D-007",title:"Nuka-to-Dixon Temperature Transfer Is Invalid",date:"2026-03-06",
+   tags:["data"],
+   text:"Replace simple lapse rate temperature transfer with statistical downscaling based on empirical Nuka-Dixon relationship. Dixon AWS is 5.10C colder than Nuka during summer overlap (n=256 days). Regression: T_dixon = 0.695 * T_nuka + (-2.650), R2=0.696. [NOTE: D-023 later showed that with corrected elevations (Dixon=1078m ELA, Nuka=375m), the 703m elevation difference at -6.5 to -7.3 C/km fully explains the offset. There is NO katabatic inversion.]",
+   alternatives:"Standard lapse rate (oversimplifies), ERA5 reanalysis (coarser resolution).",
+   why:"This analysis was correct in identifying the temperature offset but incorrect in attributing it to katabatic cooling. The real lesson (realized only after D-013 and D-023 corrected both station elevations) is that careful analysis on wrong data can produce convincing but wrong conclusions. The regression R2=0.70 and the physical narrative about katabatic cooling were both plausible -- but the 5.1C offset was simply a normal lapse rate over 703m, not an exotic glacier boundary layer effect."},
+
+  {id:"D-008",title:"Elevation-Dependent Melt Factor",date:"2026-03-06",
+   tags:["design"],
+   text:"Add MF_grad parameter: MF(z) = MF + MF_grad * (z - z_ref). A single MF cannot capture the ABL-to-ACC mass balance gradient. Even with correct temperatures, integrated effects of albedo, wind, humidity, and cloud cover cause melt efficiency to decrease with elevation. MF_grad adds one parameter to capture this. Bounds: [-0.01, 0.0] mm/d/K per m.",
+   alternatives:"Single MF for all elevations (too simple), separate MF per elevation band (overfitting with only 3 stakes).",
+   why:"The ABL stake at 804m loses 4.5 m w.e./yr while ACC at 1293m gains 0.37 m w.e./yr. Temperature alone (via the lapse rate) explains most of this gradient, but the remaining mismatch requires either unreasonable lapse rates or an elevation-dependent melt efficiency. MF_grad is the minimal parameterization: one number that lets the model produce less melt per degree at higher elevations."},
+
+  {id:"D-009",title:"Model Architecture Overhaul -- v4",date:"2026-03-06",
+   tags:["design"],
+   text:"Comprehensive model update implementing Phases 1-6 of project plan. Changes: fast_model.py rewritten with statistical temp transfer, MF_grad, daily runoff tracking. config.py updated with monthly transfer coefficients, stake config, routing/dynamics defaults. New modules: glacier_dynamics.py (delta-h), routing.py (linear reservoir), run_projection.py. Parameter set: MF, MF_grad, r_snow, r_ice, internal_lapse, precip_grad, precip_corr, T0.",
+   alternatives:"Incremental changes (slower iteration cycle).",
+   why:"At this point the model had accumulated enough bug fixes and design changes that a clean rewrite was more reliable than continued patching. The v4 architecture separated concerns cleanly: fast_model.py for computation, model.py for orchestration, glacier_dynamics.py for geometry evolution, routing.py for discharge."},
+
+  {id:"D-010",title:"Winter Katabatic Correction for Temperature Transfer",date:"2026-03-06",
+   tags:["design"],
+   text:"Apply reduced katabatic correction for Oct-Apr months. CAL-004 diagnosis revealed that the standard lapse transfer for winter months made October and November too warm, causing precipitation to fall as rain instead of snow. The model accumulated only 22% of observed winter balance at ELA/ACC. Winter coefficients changed from alpha=1.0, beta=+2.77 to alpha=0.85, beta=+1.0 for Oct-Apr.",
+   alternatives:"No winter correction (too warm), same summer correction for winter (too cold).",
+   why:"This was an attempt to fix a real problem (insufficient winter accumulation) with the wrong solution. The real issue was the Nuka elevation error (D-013): with Nuka incorrectly at 1230m, the lapse correction was adding heat instead of removing it. After D-013 corrected Nuka to 375m, the glacier is correctly placed above the station and winter temperatures are naturally colder. This decision was effectively superseded by D-012 and D-013."},
+
+  {id:"D-011",title:"Wind Redistribution of Snow (Winstral Sx)",date:"2026-03-06",
+   tags:["design"],
+   text:"Add spatially distributed wind redistribution of snowfall using the Winstral et al. (2002) Sx parameter, with prevailing wind from ESE (100 degrees). 22 years of digitized snowlines showed western side of glacier has snowline ~100m lower than eastern side every year. NW-facing slopes: mean snowline 1061m; S-facing: 1175m. Implementation: P_cell *= (1 + k_wind * sx_norm), mass-conserving.",
+   alternatives:"No wind redistribution (ignores observed spatial pattern), prescribed deposition map (requires more data).",
+   why:"The snowline asymmetry is one of the strongest spatial signals in the observational dataset: 22 years of consistent E-W gradient averaging +60m, with detrended r=+0.59. Despite this strong observational motivation, k_wind converged to ~0 in calibration (CAL-007) because the 3-stake observation network cannot constrain a spatial redistribution parameter. The parameter was removed from calibration (D-015) but the Sx field is retained for future work."},
+
+  {id:"D-012",title:"Revert to Identity Temperature Transfer",date:"2026-03-06",
+   tags:["design"],
+   text:"Remove statistical katabatic temperature transfer (D-007, D-010). Use raw Nuka SNOTEL temperature at 375m with a calibrated lapse rate. Diagnostic of CAL-004/005/006 revealed that the statistical transfer made on-glacier temperatures too cold for DETIM: ABL summer mean T = 2.4C after transfer (vs ~10C with standard lapse), requiring MF > 19 mm/d/K to match observed melt. Literature MF for ice: 6-12 mm/d/K.",
+   alternatives:"Keep statistical transfer with relaxed MF bounds (physically unreasonable), develop hybrid transfer.",
+   why:"This is a fundamental insight about how empirical index models work: DETIM was designed to use off-glacier temperature as an INDEX, not a literal physical temperature. The melt factor MF implicitly absorbs the difference between free-air and on-glacier conditions. Hock (1999) calibrated DETIM using off-glacier station data, and the resulting MF values (2-8 mm/d/K) inherently include the katabatic effect. Trying to explicitly correct for katabatic cooling removes information that MF needs to function, requiring unreasonable compensation."},
+
+  {id:"D-013",title:"Nuka SNOTEL Elevation Units Error -- 1230 ft, Not 1230 m",date:"2026-03-09",
+   tags:["fix"],
+   text:"Correct Nuka SNOTEL reference elevation from 1230 m to 375 m (1230 ft * 0.3048). The NRCS website lists elevation in feet, the standard unit for all US SNOTEL stations. The value was recorded as 1230 m in config.py, introducing an 855 m elevation error that propagated through every calibration run (CAL-001 through CAL-007). All glacier cells were positioned BELOW the reference station instead of ABOVE it. With lapse applied in the wrong direction, ABL was ~3-4C too warm.",
+   alternatives:"None -- this was a data entry error.",
+   why:"This is the root cause of all calibration failures from CAL-001 through CAL-007, and one of the most instructive errors in the project. With Nuka incorrectly at 1230m, every glacier cell (439-1637m) appeared to be at roughly the same elevation or below the station. The lapse rate, which should cool temperatures as you go up to the glacier, was instead warming them or applying minimal correction. The D-007 'katabatic paradox' (Dixon 5.1C colder despite being 'lower') was never a paradox at all -- Dixon at 1078m IS higher than Nuka at 375m. The lesson: always verify station metadata against the original source (NRCS website), not secondary records."},
+
+  {id:"D-014",title:"Cost Function Restructuring -- Inverse-Variance + Geodetic Hard Constraint",date:"2026-03-09",
+   tags:["cal"],
+   text:"Replace arbitrary-weight cost function with inverse-variance weighting and a hard geodetic constraint. Literature review of OGGM, PyGEM, and Huss et al. (2009) shows all major glacier models treat geodetic mass balance as the PRIMARY calibration constraint. The v7 cost function gave geodetic weight 0.4 vs combined stake weight 2.4, allowing the optimizer to ignore the 20-year geodetic signal. Also dropped 2000-2020 period (derived from sub-periods, not independent).",
+   alternatives:"Equal weighting (ignores measurement precision), geodetic-only (loses spatial information).",
+   why:"Inverse-variance weighting is the statistically principled approach: observations with smaller uncertainty carry more weight because they are more informative. The geodetic mass balance (-0.939 +/- 0.122 m w.e./yr) constrains the 20-year glacier-wide average to within ~12%, while individual stake measurements (+/- 0.10-0.15 m w.e.) constrain single-point seasonal balances. The hard penalty (lambda=50) prevents the optimizer from finding mathematically optimal but physically impossible solutions."},
+
+  {id:"D-015",title:"Remove Lapse Rate and k_wind from Calibration",date:"2026-03-09",
+   tags:["cal"],
+   text:"Fix lapse rate at -5.0 C/km and remove k_wind, reducing free parameters from 9 to 7. Lapse rate rationale: The optimizer consistently exploits lapse rate to compensate for other model deficiencies. Literature values for maritime glaciers converge on -4.5 to -5.5 C/km (Gardner & Sharp 2009: -4.9; Roth et al. 2023 Juneau Icefield: -5.0). k_wind rationale: CAL-007 converged to k_wind ~ 0.",
+   alternatives:"Keep lapse rate free with tight bounds (still equifinal), fix at -6.5 (standard atmosphere, too steep for maritime glacier).",
+   why:"The equifinality between lapse rate and precipitation correction is the most dangerous parameter trade-off in the model. In CAL-009, the optimizer found lapse_rate = -6.83 C/km with precip_corr = 1.20 -- a combination that fits current observations perfectly but has compensating errors. A steeper lapse rate means more warming at low elevations (more melt) and more cooling at high elevations (more accumulation), which the low precip_corr compensates by under-supplying precipitation everywhere. Under future warming, these errors DIVERGE: the too-steep lapse amplifies warming at the terminus while the too-low precip_corr starves the accumulation zone. Fixing lapse rate at the literature consensus eliminates this time bomb.\n\nThe sensitivity analysis (D-029) quantified the stakes: lapse rate sensitivity is ~10x larger than r_ice/r_snow ratio. Geodetic bias swings 1.9 m w.e./yr across the -4.0 to -6.5 C/km range. The -5.0 choice sits near the minimum geodetic bias, confirming it is well-centered."},
+
+  {id:"D-016",title:"Use Only 2000-2020 Geodetic Mean + Widen precip_corr",date:"2026-03-09",
+   tags:["cal"],
+   text:"Revert to single 2000-2020 geodetic constraint and widen precip_corr upper bound from 3.0 to 4.0. CAL-008 revealed that the two geodetic sub-periods (2000-2010 and 2010-2020) create a contradictory constraint. Nuka SNOTEL shows cooler summers 2001-2010 (9.07C) than 2011-2020 (10.00C), so the model produces less melt in the first decade. But Hugonnet shows MORE mass loss 2000-2010 (-1.07) than 2010-2020 (-0.81). Statistical test: sub-periods NOT distinguishable (Z=0.88, p>0.30).",
+   alternatives:"Keep both sub-periods with relaxed weighting, dynamic precipitation correction.",
+   why:"The contradiction between Nuka forcing and Hugonnet sub-periods reveals a fundamental limitation: the off-glacier climate station does not perfectly represent on-glacier conditions decade by decade. The 2000-2020 mean integrates over these discrepancies, providing a robust 20-year constraint. Using it alone with its tighter uncertainty gives the optimizer a cleaner signal. The sub-periods become validation targets."},
+
+  {id:"D-017",title:"Bayesian Ensemble Calibration (DE + MCMC)",date:"2026-03-09",
+   tags:["cal"],
+   text:"Replace single-optimum calibration with two-phase Bayesian ensemble: differential evolution to find the MAP estimate, then MCMC (emcee) to sample the posterior distribution. 24 walkers, 10,000 steps, burn-in 2000, thinned by autocorrelation time. 6 free parameters: MF, MF_grad, r_snow, precip_grad, precip_corr, T0. Fixed: lapse_rate=-5.0 C/km, r_ice=2.0*r_snow, k_wind=0.",
+   alternatives:"Single DE optimum (no uncertainty), grid search (too expensive in 6D), DREAM (more complex).",
+   why:"For projections, a single 'best' parameter set is scientifically insufficient. CAL-009 demonstrated the equifinality problem: multiple parameter combinations fit current observations equally well but diverge under future warming. A single optimum gives false precision -- it says 'the glacier will lose 50% of its area by 2100' when the honest answer is '35-65%'.\n\nThe r_ice/r_snow ratio was fixed at 2.0 because CAL-009 converged to near-equality (1.29 vs 1.34), eliminating the albedo feedback. When r_ice ~ r_snow, the transition from snow-covered to bare ice surface produces no change in melt rate -- destroying a physical feedback mechanism critical for projections. Under warming, more ice surface is exposed earlier each summer; if r_ice = r_snow, this exposure has no effect, underestimating melt acceleration. The 2.0 ratio is mid-range of Hock (1999) Table 4.\n\nThe MCMC posterior from CAL-013 produced 1,656 independent samples with acceptance fraction 0.368, confirming good convergence. All 5 DE seeds found the same mode, indicating a unimodal posterior."},
+
+  {id:"D-018",title:"Glacier Dynamics Overhaul -- Correct Delta-h + Ice Thickness",date:"2026-03-10",
+   tags:["fix","design"],
+   text:"Complete rewrite of glacier_dynamics.py to fix three compounding bugs: (1) Wrong size class -- used small-glacier coefficients with large-glacier exponent for a 40 km2 glacier. (2) Wrong h_r convention -- code used z_norm = (z-z_min)/range but Huss equation expects h_r = (z_max-z)/range, producing maximum thinning at headwall instead of terminus. (3) No ice thickness tracking -- cells losing 4m/yr for 10 years were never removed. Added Farinotti thickness, bedrock DEM, dynamic size-class switching.",
+   alternatives:"None -- these were bugs.",
+   why:"The three bugs compounded to produce qualitatively wrong retreat patterns: the glacier was thinning most at the headwall (highest elevations) instead of the terminus (lowest elevations), and cells with zero ice remaining were still being treated as glacier. The corrected implementation produces physically realistic retreat: terminus cells deglaciate first, with the retreat front moving upglacier over time."},
+
+  {id:"D-019",title:"CMIP6 Projection Pipeline with Discharge Routing",date:"2026-03-10",
+   tags:["proj"],
+   text:"Replace placeholder future climate with real CMIP6 projections from NASA NEX-GDDP-CMIP6 (0.25 degree, daily, bias-corrected). 5 GCMs: ACCESS-CM2, EC-Earth3, MPI-ESM1-2-HR, MRI-ESM2-0, NorESM2-MM. SSP scenarios: 1-2.6, 2-4.5, 5-8.5. Bias correction: monthly delta method against Nuka SNOTEL 1991-2020 climatology. Wire discharge routing into projections for peak water analysis.",
+   alternatives:"Linear delta method (no interannual variability), single GCM (no climate model uncertainty).",
+   why:"The 5-GCM ensemble captures the structural uncertainty in how global warming translates to local conditions at Dixon. The selection follows Rounce et al. (2023), who used a similar approach for all 215,000 glaciers globally."},
+
+  {id:"D-020",title:"Posterior Ensemble Projections (Top 250 Parameter Sets)",date:"2026-03-11",
+   tags:["proj"],
+   text:"Replace single-parameter projections with ensemble using top 250 MCMC parameter sets (following Geck 2020 on Eklutna Glacier). Each (GCM, param_set) pair runs independently with its own geometry evolution. Total: 250 x 5 GCMs = 1,250 runs per scenario. Aggregated with percentiles (p05, p25, p50, p75, p95).",
+   alternatives:"Single MAP parameter set (no parameter uncertainty), full posterior (too expensive).",
+   why:"Using the top 250 by log-probability ensures the projection ensemble is weighted toward parameter sets that best fit observations. Parameter uncertainty is relatively small compared to GCM spread but still meaningful for peak water timing."},
+
+  {id:"D-021",title:"Snowline Validation (Independent Spatial Check)",date:"2026-03-11",
+   tags:["val"],
+   text:"Independent validation against 22 years (1995-2024) of digitized snowline observations that were never used in calibration. For each year, run model from Oct 1 to satellite date, extract modeled snowline as contour where net balance = 0. Metrics: elevation RMSE, bias, correlation, balance at observed snowline. Results with MAP params (19 valid years): bias +6m, RMSE 189m, MAE 122m, r=0.52.",
+   alternatives:"Snowline as calibration target (done later in D-028), AAR validation.",
+   why:"Snowlines are the most spatially informative validation dataset available: they map the equilibrium line across the entire glacier width, revealing spatial biases that point measurements (stakes) cannot detect. The persistent +100-175m positive bias in recent years (2017-2024) was a key finding that motivated D-028."},
+
+  {id:"D-022",title:"Exclude Snowline Years with Insufficient SNOTEL Data",date:"2026-03-11",
+   tags:["data"],
+   text:"Automatically exclude snowline validation years where >30% of melt-season (May-Sep) temperature data is missing. WY2000 (37% missing) and WY2005 (86% missing, 132 of 153 days) showed extreme negative snowline bias (-600 to -660m). Root cause: validation code replaced NaN with 0C, eliminating melt and producing snowlines at the glacier terminus.",
+   alternatives:"Climatological gap-filling, hardcoded exclusion list.",
+   why:"The 30% threshold catches years where missing summer temperature data fundamentally compromises the melt calculation, while retaining years like WY2003 (21% missing, mostly late September) that validate well."},
+
+  {id:"D-023",title:"Correct Dixon AWS Elevation from 804m to 1078m",date:"2026-03-12",
+   tags:["fix"],
+   text:"The Dixon on-glacier AWS was recorded at 804m (ABL stake elevation) but was actually deployed at the ELA stake site (1078m). Evidence: temperature comparison with Nuka SNOTEL (375m) shows -4.6C offset (2024), exactly matching 1078m at -6.5 C/km lapse rate. At 804m, predicted offset would be only -2.8C. Cross-validated against MFB SNOTEL.",
+   alternatives:"None -- this was a metadata error.",
+   why:"This is the second elevation metadata error in the project (after D-013), and follows the same pattern: a number was recorded without verifying the original source. The 274m error matters for any analysis using the Dixon AWS as a reference. The corrected elevation reveals that the 'exotic' katabatic effect is only ~1C, consistent with literature values for maritime glaciers."},
+
+  {id:"D-024",title:"Multi-Station Climate Analysis -- Dixon AWS as Ground Truth",date:"2026-03-12",
+   tags:["data"],
+   text:"Evaluate all nearby SNOTEL stations against Dixon AWS (1078m) as ground truth. Key finding: Middle Fork Bradley is the best single predictor of Dixon temperature (r=0.877, RMSE=4.8C). All transfer slopes are 0.3-0.8 -- the glacier dampens temperature variability. August is the hardest month to predict (peak melt season = maximum glacier-surface decoupling). Nuka has the best precip correlation (r=0.75 on wet days).",
+   alternatives:"Use Nuka for everything, use only stations with overlap.",
+   why:"Reframing the analysis around Dixon AWS as ground truth was essential: comparing stations to each other tells you about regional coherence, but comparing them to Dixon tells you which station best predicts on-glacier conditions."},
+
+  {id:"D-025",title:"Multi-Station Climate Gap-Filling Pipeline",date:"2026-03-12",
+   tags:["data"],
+   text:"Replace ffill().fillna(0) gap handling with 5-station cascade. Temperature cascade: Nuka -> MFB -> McNeil -> Anchor -> Kachemak -> Lower Kach -> linear interp (3d max) -> DOY climatology. Precipitation: Nuka -> MFB (monthly ratio) -> DOY climatology. Results: 91.3% Nuka, 6.0% MFB, 1.8% McNeil. WY2005 Jun-Aug mean T: 8.5C (was ~0C). WY2020 total precip: 2307mm (was ~1176mm).",
+   alternatives:"ERA5 reanalysis, single-station MFB only, Dixon AWS for forcing.",
+   why:"The original ffill().fillna(0) was the single worst data processing choice in the project. Forward-filling temperatures works for 1-2 day gaps, but multi-month gaps in summer (WY2005: 132 days) propagated the last valid spring temperature into August, and fillna(0) set the rest to 0C. This killed all melt in those years, forcing the model to overcompensate with extreme MF values in clean years."},
+
+  {id:"D-026",title:"Recalibrate with Gap-Filled Climate (CAL-011)",date:"2026-03-12",
+   tags:["cal"],
+   text:"Re-run CAL-010 Bayesian ensemble calibration with multi-station gap-filled climate data from D-025. With gap-filled data, all 20 geodetic water years now contribute to calibration. Previously poisoned years provide real information. CAL-011 killed at DE step 28/200 -- superseded by CAL-012 (D-027).",
+   alternatives:"Adjust bounds/priors, free lapse rate.",
+   why:"After fixing the climate data (D-025), recalibration was mandatory -- every parameter value from CAL-010 was contaminated by the bad gap handling."},
+
+  {id:"D-027",title:"Multi-Seed Calibration to Address Posterior Multimodality (CAL-012)",date:"2026-03-12",
+   tags:["cal"],
+   text:"Replace single-seed DE + single MCMC with 5-seed DE [42, 123, 456, 789, 2024] + per-mode MCMC chains. Normalized clustering with 10% Chebyshev threshold identifies distinct modes. Result: all 5 seeds converged to one mode -- posterior is unimodal.",
+   alternatives:"Single seed (might miss modes), more seeds (diminishing returns), parallel tempering.",
+   why:"The multi-seed approach is a cheap insurance policy against posterior multimodality. Each seed costs ~50 minutes, and if all 5 find the same optimum, you have high confidence the posterior is unimodal. For CAL-012/013, all 5 seeds converged to costs within 0.003 of each other (5.343-5.345), confirming the parameter space is well-identified by the available observations."},
+
+  {id:"D-028",title:"Multi-Objective Calibration with Snowline in MCMC Likelihood",date:"2026-03-18",
+   tags:["cal"],
+   text:"Add snowline elevation as chi-squared term in MCMC log-likelihood (sigma=75m), apply glacier area evolution as post-hoc behavioral filter. Pipeline: Phase 1 (multi-seed DE) -> Phase 2 (MCMC with snowlines in likelihood) -> Phase 3 (combine posteriors) -> Phase 4 (area filter, top 1000, RMSE <= 1.0 km2). All 1000 samples passed area filter.",
+   alternatives:"Post-hoc snowline filter (rejected: no discriminating power), composite scoring, re-enable k_wind.",
+   why:"This decision addresses the most important methodological finding of the project: post-hoc snowline filtering has zero discriminating power within the stakes+geodetic posterior.\n\nInitial testing with the top 1000 from CAL-012 showed that ALL parameter sets scored snowline RMSE between 88 and 96m -- a range of only 8m with standard deviation 1.6m. Snowline RMSE was uncorrelated with log-probability (r=0.146). This means the stakes+geodetic calibration produces a posterior that is completely agnostic about snowline fit.\n\nBy putting snowlines IN the likelihood, the MCMC sampler explores parameter space differently: it rewards combinations that simultaneously satisfy stakes, geodetic, AND snowline constraints. The sigma=75m combines observed spatial spread (~50-80m), model resolution (100m), and temporal mismatch.\n\nThe structural snowline limitations are documented and accepted: DETIM produces near-contour-line snowlines (spatial std 6-22m) while observed snowlines show 24-69m spatial spread from wind redistribution and aspect effects. The model also over-amplifies interannual variability (std 129m vs observed 63m). These are inherent DETIM limitations, not parameter-tunable.\n\nThe area filter passed 100% of samples, confirming that the three-constraint likelihood (stakes + geodetic + snowline) produces a posterior that is also behavioral with respect to area, without needing a separate filtering step."},
+
+  {id:"D-029",title:"Validation Suite (Sub-period Geodetic, Stake Predictive Check, Sensitivity)",date:"2026-04-08",
+   tags:["val"],
+   text:"Three independent validation analyses using v13 posterior. (1) Sub-period geodetic: model reverses the trend -- underestimates 2000-2010 mass loss, overestimates 2010-2020. (2) Stake predictive: overall RMSE 1.20 m w.e., WY2023 ABL/ACC good, ELA biased -1.4 m w.e. both years. (3) Sensitivity: lapse rate dominates (1.9 m w.e./yr swing), r_ice/r_snow ratio has 10x less sensitivity (0.13 m w.e./yr).",
+   alternatives:"Cross-validation (too expensive), leave-one-out, bootstrapping.",
+   why:"Validation is about honesty, not marketing. The sub-period geodetic result reveals a real limitation of the gap-filled climate data. The ELA stake bias (-1.4 m w.e. in both years) reveals a spatial representativity issue. The sensitivity analysis shows lapse rate dominates the fixed-parameter error budget, motivating D-030 (lapse sensitivity projections)."},
+
+  {id:"D-030",title:"Lapse Rate Sensitivity Projections",date:"2026-04-08",
+   tags:["proj"],
+   text:"Run projections at three lapse rates (-4.5, -5.0, -5.5 C/km) to bracket structural uncertainty. Same v13 posterior params (250 subsampled), all 5 GCMs, SSP1-2.6/2-4.5/5-8.5. Results show 2100 area ranges from 5.4 km2 (-4.5, SSP5-8.5) to 31.7 km2 (-5.5, SSP1-2.6). Lapse rate choice shifts area by ~9 km2.",
+   alternatives:"Recalibrate at each lapse rate, full posterior at each rate, single MAP at each rate.",
+   why:"Running projections at the lapse rate endpoints brackets the 'known unknown' without re-opening equifinality. At -4.5, the glacier warms faster with elevation leading to more melt -- accelerated retreat. At -5.5, less warming per meter, more snow retention, slower retreat. The 9 km2 spread in 2100 area across lapse rates is comparable to the spread across SSP scenarios, meaning lapse rate uncertainty is as important as emission scenario uncertainty for Dixon's future."},
+
+  {id:"D-031",title:"ELA Stake Bias -- Wind Redistribution Representativity",date:"2026-04-09",
+   tags:["val"],
+   text:"Accept the persistent -1.4 m w.e. bias at the ELA stake (1078m) as a measurement representativity issue. The model predicts -1.3 m w.e. as the average across all 814 cells at 1028-1128m. The ELA stake is at ONE location on the southern branch, which receives preferential wind-loaded accumulation. 70% of glacier cells are in sheltered zones.",
+   alternatives:"Increase ELA uncertainty and recalibrate, re-enable k_wind, exclude ELA from calibration.",
+   why:"This decision encapsulates a core tension in glacier modeling: point measurements are not area averages. The ELA stake sits on the southern branch, a known wind-deposition zone (confirmed by 22 years of snowline asymmetry). It records +0.1 m w.e./yr because it receives extra wind-loaded snow. The model's -1.3 m w.e./yr is the AVERAGE across all 814 cells between 1028-1128m, including both sheltered and exposed zones.\n\nRecalibration would not help: forcing the model to match +0.1 at ELA would require over-accumulating at ALL cells in that band, breaking the geodetic fit and the ABL/ACC stakes. The wind redistribution parameter (k_wind) cannot be constrained by 3 stakes.\n\nThe WY2024 residual at all sites is a separate issue: Nuka SNOTEL recorded similar winter precip to WY2023 (912 vs 864 mm), but observed winter balance was dramatically higher (ABL: 0.85 -> 1.93, +127%), indicating a local accumulation event the off-glacier station missed entirely. This is a forcing limitation, not a model deficiency."}
 ];
 
-const CAL_RUNS = [
-  {id:"CAL-001",v:1,c:"15.016",st:"FAILED",n:"5/8 at bounds. SWE double-count (D-005)."},
-  {id:"CAL-002",v:2,c:"ABORT",st:"FAILED",n:"Same. Temp ref elev (D-006)."},
-  {id:"CAL-003",v:3,c:"17.508",st:"IMPROVED",n:"precip_corr off bounds. 4/7 at bounds."},
-  {id:"CAL-004",v:4,c:"17.823",st:"PROGRESS",n:"MF=4.1, geodetic close. Winter snow deficit."},
-  {id:"CAL-005",v:"4b",c:"16.43",st:"KILLED",n:"Katabatic (D-010). Worse."},
-  {id:"CAL-006",v:6,c:"16.54",st:"KILLED",n:"Wind (D-011). k_wind->0."},
-  {id:"CAL-007",v:7,c:"17.035",st:"BAD",n:"Converged but geodetic catastrophic. ROOT: D-013."},
-  {id:"CAL-008",v:8,c:"577",st:"PROGRESS",n:"Elev fix. r_snow collapsed."},
-  {id:"CAL-009",v:9,c:"7.681",st:"BEST",n:"MF=7.6, equifinality -> ensemble needed."},
-  {id:"CAL-010",v:10,c:"7.703",st:"SUCCESS",n:"First Bayesian. 2,760 samples. MF=7.11."},
-  {id:"CAL-011",v:11,c:"7.23",st:"KILLED",n:"Gap-filled. Superseded."},
-  {id:"CAL-012",v:12,c:"7.170",st:"DEFINITIVE",n:"5-seed UNIMODAL. 2,736 samples."},
-  {id:"CAL-013",v:13,c:"5.343",st:"DEFINITIVE",n:"Multi-obj +snowline. 1,656 samples. 100% pass."}
+// ── EQUATIONS ────────────────────────────────────────────────────────
+
+DATA.equations = [
+  {title:"DETIM Melt Equation (Hock 1999, Method 2)",
+   latex:"M = \\begin{cases} (MF + r_{snow/ice} \\cdot I_{pot}) \\cdot T & \\text{if } T > 0 \\\\ 0 & \\text{if } T \\leq 0 \\end{cases}",
+   explain:"The core equation of the Distributed Enhanced Temperature Index Model. Melt M (mm/day) at each grid cell equals the sum of a base melt factor MF and a radiation-dependent term (r times potential clear-sky solar radiation I_pot), multiplied by air temperature T (only when above freezing). The radiation factor r differs between snow-covered (r_snow) and ice-exposed (r_ice) surfaces, capturing the albedo feedback: bare ice absorbs roughly twice as much solar radiation as snow.\n\nThis equation occupies the sweet spot between degree-day models (M = MF * T, no spatial information) and full energy balance models (requiring wind, humidity, cloud cover at every cell). By using potential clear-sky radiation -- which depends only on topography, latitude, and day of year -- it captures first-order spatial variability without requiring meteorological data that does not exist for Dixon.\n\nThe temperature T is an INDEX, not the literal on-glacier temperature. The measured katabatic cooling at Dixon (~3C at ABL) is implicitly absorbed by MF. This is by design: Hock (1999) calibrated DETIM using off-glacier station data.",
+   variables:[
+     {sym:"M",unit:"mm/day",val:"0-30",desc:"Daily melt rate"},
+     {sym:"MF",unit:"mm d-1 K-1",val:"7.11",desc:"Melt factor (MAP)"},
+     {sym:"r_{snow}",unit:"mm m2 W-1 d-1 K-1",val:"0.00196",desc:"Snow radiation factor"},
+     {sym:"r_{ice}",unit:"mm m2 W-1 d-1 K-1",val:"0.00392",desc:"Ice radiation factor"},
+     {sym:"I_{pot}",unit:"W/m2",val:"50-350",desc:"Potential clear-sky direct solar radiation"},
+     {sym:"T",unit:"C",val:"-10 to 15",desc:"Air temperature (index)"}
+   ],
+   example:"ABL stake (804m), July 15, clear sky, south-facing slope:\nI_pot = 280 W/m2 (high, south-facing midsummer)\nT = 5.9C (Nuka 8.0C, lapse -5.0 C/km over 429m)\nSurface = ice (SWE depleted)\nMF at 804m = 7.11 + (-0.0041)*(804-375) = 5.35 mm/d/K\nM = (5.35 + 0.00392*280) * 5.9\nM = (5.35 + 1.10) * 5.9 = 38.0 mm/day\n\nACC stake (1293m), July 15, north-facing:\nI_pot = 90 W/m2, T = 3.4C, surface = snow\nMF at 1293m = 7.11 + (-0.0041)*(1293-375) = 3.35\nM = (3.35 + 0.00196*90) * 3.4 = 12.0 mm/day",
+   codeRef:"dixon_melt/fast_model.py, line ~100; dixon_melt/melt.py"},
+
+  {title:"Temperature Lapse Rate Distribution",
+   latex:"T_{cell} = T_{nuka} + \\lambda \\cdot (z_{cell} - z_{ref})",
+   explain:"Distributes temperature from Nuka SNOTEL (375m) to every grid cell using a constant lapse rate lambda = -5.0 C/km. Temperature decreases by 5 degrees for every 1000m of elevation gain.\n\nThis is the simplest possible temperature distribution, and it works because DETIM uses temperature as an index rather than a physical variable. The calibrated melt factor MF absorbs systematic biases. The identity transfer (D-012) means T_nuka is used directly -- no statistical correction.\n\nThe -5.0 C/km value comes from maritime glacier literature: Gardner & Sharp (2009) -4.9 C/km, Roth et al. (2023) -5.0 C/km. The sensitivity analysis (D-029) showed this is the dominant fixed-parameter choice: +/- 0.5 C/km swings geodetic balance by ~0.6 m w.e./yr.",
+   variables:[
+     {sym:"T_{cell}",unit:"C",val:"-15 to 15",desc:"Temperature at grid cell"},
+     {sym:"T_{nuka}",unit:"C",val:"-20 to 20",desc:"Nuka SNOTEL daily mean temperature"},
+     {sym:"\\lambda",unit:"C/m",val:"-0.005",desc:"Lapse rate (fixed, D-015)"},
+     {sym:"z_{cell}",unit:"m",val:"439-1637",desc:"Grid cell elevation"},
+     {sym:"z_{ref}",unit:"m",val:"375",desc:"Nuka SNOTEL elevation"}
+   ],
+   example:"Summer day, Nuka T = 8.0C:\nABL (804m): T = 8.0 + (-0.005)*(804-375) = 5.85C\nELA (1078m): T = 8.0 + (-0.005)*(1078-375) = 4.49C\nACC (1293m): T = 8.0 + (-0.005)*(1293-375) = 3.41C\nHeadwall (1637m): T = 8.0 + (-0.005)*(1637-375) = 1.69C",
+   codeRef:"dixon_melt/fast_model.py, line ~90"},
+
+  {title:"Precipitation Distribution",
+   latex:"P_{cell} = P_{nuka} \\cdot c_p \\cdot \\left(1 + p_g \\cdot (z_{cell} - z_{ref})\\right)",
+   explain:"Distributes precipitation from Nuka SNOTEL with a bulk correction factor c_p (1.621) and an elevation gradient p_g (0.000694/m, ~7%/100m). The headwall receives ~50% more precipitation than the terminus.\n\nThe correction factor accounts for gauge undercatch (10-30%), orographic enhancement between Nuka's coastal location and the glacier interior, and systematic precipitation differences. The Wolverine Glacier analog is 2.28x and PyGEM caps at 3.0, so 1.621 is conservative.\n\nCombined with the temperature-dependent rain/snow partition, this creates the accumulation pattern: at the terminus in summer, most precipitation falls as rain; at the headwall, almost all is snow year-round.",
+   variables:[
+     {sym:"P_{cell}",unit:"mm/day",val:"0-50",desc:"Precipitation at grid cell"},
+     {sym:"P_{nuka}",unit:"mm/day",val:"0-30",desc:"Nuka SNOTEL daily precipitation"},
+     {sym:"c_p",unit:"-",val:"1.621",desc:"Correction factor (MAP)"},
+     {sym:"p_g",unit:"1/m",val:"0.000694",desc:"Elevation gradient"}
+   ],
+   example:"Nuka reports 10mm:\nTerminus (439m): P = 10*1.621*(1+0.000694*(439-375)) = 16.9 mm\nELA (1078m): P = 10*1.621*(1+0.000694*(1078-375)) = 24.1 mm\nHeadwall (1637m): P = 10*1.621*(1+0.000694*(1637-375)) = 30.4 mm",
+   codeRef:"dixon_melt/fast_model.py; dixon_melt/precipitation.py"},
+
+  {title:"Rain/Snow Partition",
+   latex:"f_{snow} = \\begin{cases} 1 & T \\leq T_0 - 1 \\\\ 0.5(T_0 + 1 - T) & T_0 - 1 < T < T_0 + 1 \\\\ 0 & T \\geq T_0 + 1 \\end{cases}",
+   explain:"Partitions precipitation into snow and rain using a linear transition zone around T0 (~0C). Below -1C: all snow. Above +1C: all rain. Linear mix between.\n\nThe near-zero T0 means the transition is centered right at freezing, physically reasonable for a maritime glacier. Under 2C warming at the ELA, nearly all summer precipitation would convert from mixed to pure rain, eliminating summer snowfall events that add ~0.5 m w.e./yr at high elevations.",
+   variables:[
+     {sym:"f_{snow}",unit:"-",val:"0-1",desc:"Snow fraction of precipitation"},
+     {sym:"T",unit:"C",val:"-10 to 15",desc:"Air temperature at cell"},
+     {sym:"T_0",unit:"C",val:"~0.0",desc:"Threshold temperature (MAP)"}
+   ],
+   example:"ELA (1078m), summer T=4.5C: f_snow=0 (all rain)\nACC (1293m), October T=0.5C: f_snow=0.25\nACC (1293m), November T=-2.0C: f_snow=1.0 (all snow)",
+   codeRef:"dixon_melt/fast_model.py, _rain_snow_fraction()"},
+
+  {title:"Delta-h Glacier Thinning (Huss et al. 2010)",
+   latex:"\\Delta h(h_r) = (h_r + a)^\\gamma + b(h_r + a) + c",
+   explain:"Distributes glacier-wide mass change across the elevation profile. h_r ranges from 0 at headwall to 1 at terminus. Maximum thinning at terminus for large glaciers (gamma=6): ~12x more thinning than headwall.\n\nDynamic size-class switching: as Dixon shrinks below 20 km2, it transitions to 'medium' coefficients (gamma=4), spreading thinning more evenly. This feedback accelerates retreat.\n\nThe delta-h method is empirical (not physically based) but standard: OGGM, PyGEM, and GloGEM all use variants for regional projections.",
+   variables:[
+     {sym:"h_r",unit:"-",val:"0-1",desc:"Normalized elevation (0=headwall, 1=terminus)"},
+     {sym:"\\gamma",unit:"-",val:"6/4/2",desc:"Thinning exponent by size class"},
+     {sym:"a, b, c",unit:"-",val:"-0.02, 0.12, 0.00",desc:"Large-glacier coefficients"}
+   ],
+   example:"Large glacier (Dixon, 40 km2):\nTerminus (h_r=1): dh = (1-0.02)^6 + 0.12*(1-0.02) = 1.004\nELA (h_r=0.5): dh = (0.5-0.02)^6 + 0.12*0.48 = 0.070\nTerminus receives 14x more thinning than ELA.\nFor -0.939 m w.e./yr glacier-wide:\n  terminus ~3 m/yr, ELA ~0.2 m/yr",
+   codeRef:"dixon_melt/glacier_dynamics.py"},
+
+  {title:"Volume-Area Scaling (Bahr et al. 1997)",
+   latex:"V = c_V \\cdot A^{\\gamma_V}",
+   explain:"Relates glacier volume (km3) to area (km2). For Dixon at 40.1 km2: V = 0.034 * 40.1^1.36 = 3.75 km3, giving mean thickness ~94m. Used for initialization when Farinotti consensus thickness is not available, and as a consistency check.",
+   variables:[
+     {sym:"V",unit:"km3",val:"~3.75",desc:"Glacier volume"},
+     {sym:"A",unit:"km2",val:"40.1",desc:"Glacier area"},
+     {sym:"c_V",unit:"-",val:"0.034",desc:"Scaling coefficient"},
+     {sym:"\\gamma_V",unit:"-",val:"1.36",desc:"Scaling exponent"}
+   ],
+   example:"Current: V = 0.034 * 40.1^1.36 = 3.75 km3 (94m mean)\nSSP2-4.5 2100 (19.6 km2): V = 0.034 * 19.6^1.36 = 1.50 km3 (77m mean)",
+   codeRef:"dixon_melt/glacier_dynamics.py; dixon_melt/config.py"},
+
+  {title:"MCMC Log-Likelihood (CAL-013)",
+   latex:"\\ln \\mathcal{L} = -\\frac{1}{2} \\sum_{i}^{stakes} \\left(\\frac{b_i - \\hat{b}_i}{\\sigma_i}\\right)^2 - \\frac{1}{2}\\left(\\frac{\\bar{B}_{geo} - \\hat{B}_{geo}}{\\sigma_{geo}}\\right)^2 - \\frac{1}{2}\\sum_{j}^{snowlines}\\left(\\frac{z_j - \\hat{z}_j}{\\sigma_{sl}}\\right)^2",
+   explain:"Three-component log-likelihood combining stakes, geodetic, and snowline observations. Each term is weighted by inverse variance. The hard geodetic penalty (lambda=50) prevents solutions that exceed reported uncertainty.\n\nThis three-component likelihood was the key innovation of CAL-013 (D-028). Previous calibrations used only stakes and geodetic, producing posteriors agnostic about snowline fit.",
+   variables:[
+     {sym:"b_i",unit:"m w.e.",val:"-5 to +3",desc:"Observed stake balance"},
+     {sym:"\\sigma_i",unit:"m w.e.",val:"0.10-0.15",desc:"Stake uncertainty"},
+     {sym:"\\bar{B}_{geo}",unit:"m w.e./yr",val:"-0.939",desc:"Geodetic balance"},
+     {sym:"\\sigma_{geo}",unit:"m w.e./yr",val:"0.122",desc:"Geodetic uncertainty"},
+     {sym:"z_j / \\sigma_{sl}",unit:"m",val:"984-1238 / 75",desc:"Snowline elevation / uncertainty"}
+   ],
+   example:"MAP params, WY2023:\nABL annual: chi2 = (-0.38/0.12)^2 = 10.0\nGeodetic: chi2 = (0.122/0.122)^2 = 1.0\nSnowline 2023: chi2 = (30/75)^2 = 0.16\nTotal ln(L) = -0.5*(10.0+1.0+0.16) = -5.58",
+   codeRef:"run_calibration_v13.py; dixon_melt/calibration.py"},
+
+  {title:"Linear Reservoir Discharge",
+   latex:"Q_i(t) = k_i \\cdot S_i(t), \\quad S_i(t+1) = S_i(t) + f_i \\cdot R(t) - Q_i(t)",
+   explain:"Three parallel linear reservoirs: fast (k=0.3/day, 60%), slow (k=0.05/day, 30%), groundwater (k=0.01/day, 10%). Total discharge Q = sum of all three, converted from mm/day to m3/s. Used in projections for peak water timing.",
+   variables:[
+     {sym:"Q_i",unit:"mm/day or m3/s",val:"0-12",desc:"Discharge from reservoir i"},
+     {sym:"S_i",unit:"mm",val:"0-100",desc:"Storage in reservoir i"},
+     {sym:"k_i",unit:"day-1",val:"0.3, 0.05, 0.01",desc:"Recession coefficients"},
+     {sym:"f_i",unit:"-",val:"0.6, 0.3, 0.1",desc:"Partitioning fractions"}
+   ],
+   example:"Peak day, R=25 mm over 40 km2:\nFast: Q = 0.3*(10+15) = 7.5 mm/day\nSlow: Q = 0.05*(50+7.5) = 2.9 mm/day\nGW: Q = 0.01*(30+2.5) = 0.3 mm/day\nTotal = 10.7 mm/day * 40e6/86400 = 4.95 m3/s",
+   codeRef:"dixon_melt/routing.py"},
+
+  {title:"Gap-Fill Temperature Transfer",
+   latex:"T_{nuka} = \\alpha_m \\cdot T_{station} + \\beta_m",
+   explain:"Monthly regression predicting Nuka-equivalent temperature from other stations. Separate slope/intercept for each month, computed from overlapping valid days. The cascade fills gaps in priority order: MFB (best RMSE), McNeil, Anchor, Kachemak, Lower Kachemak.\n\nFor precipitation, monthly ratios (P_nuka / P_mfb) are used because precip transfer is noisier.",
+   variables:[
+     {sym:"\\alpha_m",unit:"-",val:"0.6-1.0",desc:"Monthly slope"},
+     {sym:"\\beta_m",unit:"C",val:"-2 to +4",desc:"Monthly intercept"},
+     {sym:"r_m",unit:"-",val:"1.4-2.4",desc:"Precip ratio (Nuka/MFB)"}
+   ],
+   example:"January gap, MFB = -8C:\nT_nuka = 0.8687*(-8) + (-0.25) = -7.20C\nJuly gap, MFB = 14C:\nT_nuka = 0.955*14 + 1.20 = 14.57C",
+   codeRef:"dixon_melt/climate.py; config.py TEMP_TRANSFER_TO_NUKA"}
 ];
 
-// ─── SEARCH INDEX ───
-const SX = [];
-EQUATIONS.forEach(e => SX.push({ty:"Equation",id:e.id,nm:e.name,tx:e.name+" "+e.pe,vw:"equations",anc:"eq-"+e.id}));
-DECISIONS.forEach(d => SX.push({ty:"Decision",id:d.id,nm:d.id+": "+d.t,tx:d.id+" "+d.t+" "+d.s,vw:"decisions",anc:"dec-"+d.id}));
-MODULES.forEach(m => SX.push({ty:"Module",id:m.name,nm:m.name,tx:m.name+" "+m.role+" "+m.desc,vw:"architecture",anc:null}));
+// ── VIEW RENDERING ──────────────────────────────────────────────────
 
-// ─── PANEL ───
-const mainEl = document.getElementById('main-content');
-const panel = document.getElementById('detail-panel');
-const pc = document.getElementById('detail-content');
-function openPanel(node) {
-  pc.replaceChildren();
-  pc.appendChild(node);
-  panel.classList.add('open');
-  mainEl.classList.add('panel-open');
-  document.body.classList.add('panel-open');
-  // Scroll panel to top on each open
-  panel.scrollTop = 0;
-  if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([pc]);
+function clearChildren(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
 }
+
+function makeTable(headers, rows, opts) {
+  opts = opts || {};
+  var table = el('table');
+  var thead = el('thead');
+  var tr = el('tr');
+  headers.forEach(function(h) { tr.appendChild(el('th', {textContent: h})); });
+  thead.appendChild(tr);
+  table.appendChild(thead);
+  var tbody = el('tbody');
+  rows.forEach(function(row) {
+    var r = el('tr');
+    row.forEach(function(cell, i) {
+      var td = el('td', {textContent: String(cell)});
+      if (opts.mono && opts.mono.indexOf(i) >= 0) td.style.fontFamily = "'Fira Code', monospace";
+      r.appendChild(td);
+    });
+    tbody.appendChild(r);
+  });
+  table.appendChild(tbody);
+  return table;
+}
+
+// ── Architecture View ───────────────────────────────────────────────
+
+function renderArchitecture() {
+  var v = document.getElementById('view-architecture');
+  clearChildren(v);
+  v.appendChild(el('h1', {textContent: 'Model Architecture'}));
+
+  var diagramText = [
+    '                        DIXON GLACIER DETIM -- DATA FLOW',
+    '                        ================================',
+    '',
+    '  INPUT DATA                    PROCESSING                    CALIBRATION',
+    '  ----------                    ----------                    -----------',
+    '',
+    '  Nuka SNOTEL (375m)  ------>  [climate.py]  ------+',
+    '  Middle Fork Bradley          Gap-fill cascade     |',
+    '  McNeil Canyon                5-station transfer    |',
+    '  Anchor River Divide                                |',
+    '                                                     v',
+    '  IfSAR DEM (5m)     ------>  [terrain.py]  ------> [fast_model.py]',
+    '  Glacier outline (RGI7)       Slope, aspect         DETIM kernel',
+    '                               Horizon angles        (Numba JIT)',
+    '                               Wind exposure (Sx)         |',
+    '                                      |                    |',
+    '  Solar geometry      ------>  [solar.py]  ---------->    |',
+    '  Latitude 59.66N              I_pot lookup (365d)        |',
+    '                                                          |',
+    '  [config.py]  ----------------------------------------->|',
+    '  All constants, params                                   |',
+    '                                                          |',
+    '                                                          v',
+    '  Stake obs (27 rows) ------>  [calibration.py]  <---- model output',
+    '  Geodetic MB (Hugonnet)       Objective function',
+    '  Snowline obs (22 yr)         Inverse-variance',
+    '                               + snowline chi2',
+    '                                      |',
+    '                                      v',
+    '                               [run_calibration_v13.py]',
+    '                               DE (5 seeds) + MCMC',
+    '                               1,656 posterior samples',
+    '                                      |',
+    '  PROJECTION                          v                   OUTPUT',
+    '  ----------                   [behavioral_filter.py]     ------',
+    '                               Area evolution check',
+    '  CMIP6 (5 GCMs)    ------>           |',
+    '  SSP1-2.6 / 2-4.5 / 5-8.5           v',
+    '                             [climate_projections.py]',
+    '  [glacier_dynamics.py] <--- Bias correction',
+    '  Delta-h thinning           Monthly delta method',
+    '  Ice thickness track              |',
+    '  Size-class switching             v',
+    '           |               [run_projection.py]',
+    '           +-------------> 250 params x 5 GCMs',
+    '                           = 1,250 runs/scenario',
+    '                                   |',
+    '  [routing.py]  <----- daily melt  |',
+    '  Linear reservoirs                v',
+    '  Fast/slow/GW            Peak water timing',
+    '                          Area/volume trajectories',
+    '                          Discharge projections',
+    '',
+    '  VALIDATION',
+    '  ----------',
+    '  [snowline_validation.py]   22 years digitized snowlines',
+    '  [behavioral_filter.py]     6 digitized outlines (2000-2025)',
+    '  [run_validation.py]        Sub-period geodetic, stake check, sensitivity'
+  ].join('\n');
+
+  var pre = el('div', {className: 'ascii-box'});
+  var moduleNames = DATA.modules.map(function(m) { return m.name; });
+  var parts = diagramText.split(/(\[[\w_.]+\])/g);
+  parts.forEach(function(part) {
+    var match = part.match(/^\[(\w+\.py)\]$/);
+    if (match && moduleNames.indexOf(match[1]) >= 0) {
+      var span = el('span', {className: 'mod-link', textContent: match[1]});
+      span.addEventListener('click', function() { openModulePanel(match[1]); });
+      pre.appendChild(span);
+    } else {
+      pre.appendChild(document.createTextNode(part));
+    }
+  });
+  v.appendChild(pre);
+
+  // Module inventory table
+  v.appendChild(el('h2', {textContent: 'Module Inventory'}));
+  var rows = DATA.modules.map(function(m) {
+    return [m.name, m.category, m.lines, m.deps.join(', ') || 'none', m.decisions.join(', ')];
+  });
+  var table = makeTable(['Module', 'Category', 'Lines', 'Dependencies', 'Decisions'], rows);
+  var trs = table.querySelectorAll('tbody tr');
+  trs.forEach(function(row, i) {
+    var firstCell = row.querySelector('td');
+    firstCell.style.color = '#6c8cff';
+    firstCell.style.cursor = 'pointer';
+    firstCell.addEventListener('click', function() {
+      openModulePanel(DATA.modules[i].name);
+    });
+  });
+  v.appendChild(el('div', {className: 'card'}, [table]));
+
+  // Calibration summary
+  v.appendChild(el('h2', {textContent: 'Current Calibration (CAL-013)'}));
+  var cs = DATA.calSummary;
+  v.appendChild(el('div', {className: 'card'}, [
+    makeTable(['Property', 'Value'], [
+      ['Version', cs.version], ['Method', cs.method], ['Decision', cs.decision],
+      ['DE Seeds', cs.de_seeds.join(', ')], ['Modes Found', cs.n_modes],
+      ['Best DE Cost', cs.de_best_cost.toFixed(3)], ['MCMC Samples', cs.n_samples],
+      ['Acceptance', (cs.acceptance * 100).toFixed(1) + '%'],
+      ['Wall Time', cs.wall_time_h.toFixed(1) + ' hours']
+    ])
+  ]));
+
+  // MAP parameters
+  v.appendChild(el('h2', {textContent: 'MAP Parameters (Best Fit)'}));
+  var paramRows = Object.keys(DATA.bestParams).map(function(k) {
+    var r = DATA.calSummary.posteriorRanges[k];
+    return [k, DATA.bestParams[k].toFixed ? DATA.bestParams[k].toFixed(6) : DATA.bestParams[k],
+            r ? '[' + r[0] + ', ' + r[1] + ']' : 'fixed'];
+  });
+  v.appendChild(el('div', {className: 'card'}, [
+    makeTable(['Parameter', 'MAP Value', '90% CI'], paramRows)
+  ]));
+}
+
+// ── Module Side Panel ───────────────────────────────────────────────
+
+function openModulePanel(moduleName) {
+  var mod = DATA.modules.find(function(m) { return m.name === moduleName; });
+  if (!mod) return;
+
+  document.getElementById('panel-title').textContent = mod.name;
+  document.getElementById('panel-path').textContent = mod.path + ' (' + mod.lines + ' lines)';
+
+  var body = document.getElementById('panel-body');
+  clearChildren(body);
+
+  mod.description.split('\n\n').forEach(function(para) {
+    body.appendChild(el('p', {textContent: para}));
+  });
+
+  if (mod.equations && mod.equations.length > 0 && mod.equations[0] !== 'Same as fast_model.py' && mod.equations[0] !== 'All constants: see parameter table') {
+    var eqSection = el('div', {className: 'panel-section'});
+    eqSection.appendChild(el('div', {className: 'panel-section-title', textContent: 'Key Equations'}));
+    mod.equations.forEach(function(eq) {
+      var block = el('div', {className: 'eq-block'});
+      block.textContent = '\\(' + eq + '\\)';
+      eqSection.appendChild(block);
+    });
+    body.appendChild(eqSection);
+  }
+
+  if (mod.params && mod.params.length > 0) {
+    var paramSection = el('div', {className: 'panel-section'});
+    paramSection.appendChild(el('div', {className: 'panel-section-title', textContent: 'Parameters & Constants'}));
+    paramSection.appendChild(makeTable(['Name', 'Value', 'Description'],
+      mod.params.map(function(p) { return [p.name, p.val, p.desc]; })));
+    body.appendChild(paramSection);
+  }
+
+  if (mod.decisions && mod.decisions.length > 0) {
+    var decSection = el('div', {className: 'panel-section'});
+    decSection.appendChild(el('div', {className: 'panel-section-title', textContent: 'Related Decisions'}));
+    mod.decisions.forEach(function(dId) {
+      var dec = DATA.decisions.find(function(d) { return d.id === dId; });
+      var link = el('span', {className: 'decision-link', textContent: dId + ': ' + (dec ? dec.title : '')});
+      link.addEventListener('click', function() {
+        closePanel();
+        switchView('decisions');
+        setTimeout(function() { expandDecision(dId); }, 100);
+      });
+      decSection.appendChild(link);
+    });
+    body.appendChild(decSection);
+  }
+
+  document.getElementById('side-panel').classList.add('open');
+  document.body.classList.add('panel-open');
+  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    MathJax.typesetPromise([body]);
+  }
+}
+
 function closePanel() {
-  panel.classList.remove('open');
-  mainEl.classList.remove('panel-open');
+  document.getElementById('side-panel').classList.remove('open');
   document.body.classList.remove('panel-open');
 }
-document.getElementById('close-detail').textContent = '\u00d7';
-document.getElementById('close-detail').addEventListener('click', closePanel);
 
-// ─── NAV ───
-document.querySelectorAll('nav .tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('nav .tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById(tab.dataset.view).classList.add('active');
+document.getElementById('panel-close').addEventListener('click', closePanel);
+
+// ── Data View ───────────────────────────────────────────────────────
+
+var dataSubTabs = ['Stakes','Geodetic','Snowlines','Area','Sensitivity','Lapse Projections','Charts'];
+
+function renderData() {
+  var v = document.getElementById('view-data');
+  clearChildren(v);
+  v.appendChild(el('h1', {textContent: 'Observation Data & Results'}));
+
+  var tabContainer = el('div', {className: 'sub-tabs'});
+  dataSubTabs.forEach(function(name, i) {
+    var tab = el('div', {className: 'sub-tab' + (i === 0 ? ' active' : ''), textContent: name});
+    tab.addEventListener('click', function() {
+      tabContainer.querySelectorAll('.sub-tab').forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      v.querySelectorAll('.data-panel').forEach(function(p) { p.classList.remove('active'); });
+      document.getElementById('data-panel-' + i).classList.add('active');
+      if (i === 6) setTimeout(renderCharts, 50);
+    });
+    tabContainer.appendChild(tab);
   });
-});
+  v.appendChild(tabContainer);
 
-function navTo(view, anchorId) {
-  document.querySelector('[data-view="'+view+'"]').click();
-  if(anchorId) setTimeout(()=>{const e=document.getElementById(anchorId);if(e)e.scrollIntoView({behavior:'smooth',block:'center'});},150);
+  // Stakes
+  var p0 = el('div', {className: 'data-panel active', id: 'data-panel-0'});
+  p0.appendChild(el('h2', {textContent: 'Stake Mass Balance Observations (25 rows)'}));
+  p0.appendChild(el('p', {textContent: '3 sites (ABL 804m, ELA 1078m, ACC 1293m), WY2023-2025. Annual, summer, and winter periods.', style:{color:'#a0a4b8',marginBottom:'12px'}}));
+  p0.appendChild(makeTable(['Site','Period','Year','Start','End','MB (m w.e.)','Unc','Elev'],
+    DATA.stakes.map(function(s){return[s.site,s.period,s.year,s.start,s.end,s.mb.toFixed(2),s.unc.toFixed(2),s.elev];}),{mono:[5,6]}));
+  v.appendChild(p0);
+
+  // Geodetic
+  var p1 = el('div', {className: 'data-panel', id: 'data-panel-1'});
+  p1.appendChild(el('h2', {textContent: 'Geodetic Mass Balance (Hugonnet et al. 2021)'}));
+  p1.appendChild(el('p', {textContent: 'RGI60-01.18059. 2000-2020 mean used for calibration; sub-periods are validation.', style:{color:'#a0a4b8',marginBottom:'12px'}}));
+  p1.appendChild(makeTable(['Period','Area (km2)','dh/dt','err','dm/dt/da','err'],
+    DATA.geodetic.map(function(g){return[g.period,(g.area_m2/1e6).toFixed(2),g.dhdt.toFixed(3),g.err.toFixed(3),g.dmdtda.toFixed(3),g.err_dm.toFixed(3)];}),{mono:[2,3,4,5]}));
+  v.appendChild(p1);
+
+  // Snowlines
+  var p2 = el('div', {className: 'data-panel', id: 'data-panel-2'});
+  p2.appendChild(el('h2', {textContent: 'Digitized Snowline Observations (22 years)'}));
+  p2.appendChild(makeTable(['Year','Date','Source','Mean (m)','Median','Std','Min','Max','N'],
+    DATA.snowlines.map(function(s){return[s.year,s.date,s.source,s.mean.toFixed(1),s.median.toFixed(1),s.std.toFixed(1),s.min.toFixed(1),s.max.toFixed(1),s.n];}),{mono:[3,4,5,6,7]}));
+  v.appendChild(p2);
+
+  // Area
+  var p3 = el('div', {className: 'data-panel', id: 'data-panel-3'});
+  p3.appendChild(el('h2', {textContent: 'Glacier Area Evolution (6 Outlines)'}));
+  p3.appendChild(el('p', {textContent: 'Manual digitization, 5-year intervals. Total retreat: 1.77 km2 (4.4%).', style:{color:'#a0a4b8',marginBottom:'12px'}}));
+  p3.appendChild(makeTable(['Year','Area (km2)','Loss (km2)','Source'],
+    DATA.areas.map(function(a){return[a.year,a.area.toFixed(2),(40.11-a.area).toFixed(2),a.source];}),{mono:[1,2]}));
+  v.appendChild(p3);
+
+  // Sensitivity
+  var p4 = el('div', {className: 'data-panel', id: 'data-panel-4'});
+  p4.appendChild(el('h2', {textContent: 'Fixed Parameter Sensitivity (D-029)'}));
+  p4.appendChild(el('p', {textContent: 'Lapse rate sensitivity is ~10x larger than r_ice/r_snow ratio.', style:{color:'#a0a4b8',marginBottom:'12px'}}));
+  p4.appendChild(makeTable(['Parameter','Value','Geod Mod','Bias','Stake RMSE'],
+    DATA.sensitivity.map(function(s){return[s.param,s.value.toFixed(2),s.geod_mod.toFixed(3),s.bias.toFixed(3),s.stake_rmse.toFixed(3)];}),{mono:[1,2,3,4]}));
+  v.appendChild(p4);
+
+  // Lapse projections
+  var p5 = el('div', {className: 'data-panel', id: 'data-panel-5'});
+  p5.appendChild(el('h2', {textContent: 'Lapse Rate Sensitivity Projections (D-030)'}));
+  p5.appendChild(el('p', {textContent: '2100 area ranges from 5.4 km2 (-4.5, SSP5-8.5) to 31.7 km2 (-5.5, SSP1-2.6).', style:{color:'#a0a4b8',marginBottom:'12px'}}));
+  p5.appendChild(makeTable(['Lapse','Scenario','Area p50','p05','p95','Vol (km3)','Peak Yr','Peak Q'],
+    DATA.lapseProjections.map(function(l){return[l.lapse.toFixed(1),l.scenario.toUpperCase(),l.area_p50.toFixed(1),l.area_p05.toFixed(1),l.area_p95.toFixed(1),l.vol_p50.toFixed(2),l.peak_year,l.peak_q.toFixed(2)];}),{mono:[0,2,3,4,5,6,7]}));
+  v.appendChild(p5);
+
+  // Charts
+  var p6 = el('div', {className: 'data-panel', id: 'data-panel-6'});
+  p6.appendChild(el('h2', {textContent: 'Interactive Charts'}));
+  p6.appendChild(el('div', {id: 'chart-stakes', style: {height:'400px',marginBottom:'24px'}}));
+  p6.appendChild(el('div', {id: 'chart-snowlines', style: {height:'400px',marginBottom:'24px'}}));
+  p6.appendChild(el('div', {id: 'chart-area', style: {height:'350px',marginBottom:'24px'}}));
+  p6.appendChild(el('div', {id: 'chart-sensitivity', style: {height:'350px',marginBottom:'24px'}}));
+  v.appendChild(p6);
 }
 
-// ═══════════ MODULE PANEL (comprehensive) ═══════════
+function renderCharts() {
+  var L = {
+    paper_bgcolor:'#0f1117', plot_bgcolor:'#161822',
+    font:{color:'#e8e8e8',family:'Inter, sans-serif',size:12},
+    margin:{l:60,r:30,t:40,b:50},
+    xaxis:{gridcolor:'#2a2d42',zerolinecolor:'#2a2d42'},
+    yaxis:{gridcolor:'#2a2d42',zerolinecolor:'#2a2d42'},
+    legend:{bgcolor:'rgba(0,0,0,0)'}
+  };
 
-// Extended plain-English module descriptions for the side panel
-const MODULE_EXPLAIN = {
-'config.py': 'This is the single source of truth for all site-specific constants in the Dixon Glacier model. It defines where the glacier is (59.66N, 150.88W), how high the weather stations are (Nuka SNOTEL at 375m -- corrected from 1230m in D-013 after discovering NRCS reports in feet not meters; Dixon AWS at 1078m at the ELA -- corrected from 804m in D-023), and the default starting values for all model parameters.\n\nPhysical constants here include the solar constant (1368 W/m2), ice density (900 kg/m3), and atmospheric transmissivity (0.75). The delta-h glacier retreat coefficients from Huss et al. (2010) are defined for three size classes -- Dixon starts as "large" (>20 km2) with gamma=6, meaning thinning is very concentrated at the terminus.\n\nThe routing parameters (k_fast=0.3, k_slow=0.05, k_gw=0.01 per day) control how fast meltwater reaches the outlet. The multi-station gap-fill transfer coefficients (monthly slope/intercept for 5 backup SNOTEL stations) are also stored here.',
-'melt.py': 'This is the core physics of the model -- the equation that converts temperature and solar radiation into melt. It implements Hock (1999) Method 2, the defining equation of DETIM:\n\nM = (MF + r * I_pot) * T\n\nIn plain English: on any day where air temperature T is above freezing, each glacier cell melts by an amount proportional to temperature. The proportionality constant has two parts: (1) MF, the "melt factor," which captures all the non-radiative energy sources (sensible heat, longwave radiation, turbulent fluxes) as a single empirical number; and (2) r * I_pot, which adds extra melt for direct sunlight hitting the slope. South-facing cells with the sun hitting them head-on melt more; shaded north-facing cells melt less.\n\nThe surface type matters: snow (r_snow = 1.41e-3) reflects more sunlight than bare ice (r_ice = 2 * r_snow = 2.82e-3), so ice melts faster per unit of radiation. This is a simplified way to capture albedo differences without measuring albedo directly.\n\nAll computation is JIT-compiled with Numba for speed -- this function is called for every grid cell (4,011 cells at 100m) for every day of the simulation.',
-'temperature.py': 'A deceptively simple but critically important module. It takes the single temperature reading from Nuka SNOTEL (at 375m elevation, 20km from the glacier) and extrapolates it to every single cell on the glacier using a constant lapse rate:\n\nT_cell = T_station + lapse_rate * (z_cell - z_station)\n\nThe lapse rate is fixed at -5.0 C per 1000m, meaning for every 1000m you go up, temperature drops 5 degrees. This value comes from Gardner & Sharp (2009) who found -4.9 C/km, and Roth et al. (2023) who found -5.0 C/km for Alaskan glaciers.\n\nThis means the glacier terminus (439m, just 64m above the station) is only ~0.3C cooler than Nuka, while the headwall (1637m, 1262m above) is 6.3C cooler. On a summer day when Nuka reads 10C, the terminus sees 9.7C but the headwall only 3.7C -- which is why the headwall accumulates snow while the terminus melts vigorously.\n\nGetting this module right was the hardest part of the project. The first 7 calibration attempts failed because of elevation errors in this chain (D-006, D-013).',
-'precipitation.py': 'Distributes precipitation from the Nuka SNOTEL station across the glacier with two adjustments, then decides if each cell gets rain or snow.\n\nFirst, the measured precipitation is multiplied by a correction factor (precip_corr = 1.61, calibrated). This accounts for: (a) wind-induced undercatch at the SNOTEL gauge (wind blows snow particles past the collector), and (b) the fact that the glacier is in a different precipitation regime 20km away and 700m higher.\n\nSecond, an elevation gradient increases precipitation at higher elevations (precip_grad = 0.0007 per meter). This captures orographic enhancement: as moist air rises over the mountains, it cools and drops more moisture. At the ELA (1078m), precipitation is about 49% higher than at the station.\n\nFinally, rain vs snow is determined by temperature with a 2-degree linear transition around T0 (calibrated near 0C). Below T0-1, it is all snow. Above T0+1, all rain. In between, a linear mix. This matters enormously for mass balance: rain runs off immediately, but snow accumulates and can survive into the next melt season.',
-'solar.py': 'Computes the potential clear-sky direct solar radiation reaching every point on the glacier, for every day of the year. This is the I_pot in the core melt equation.\n\nThe calculation follows Oke (1987) solar geometry with corrections for: (1) solar declination (how high the sun gets, varying from 7 degrees at winter solstice to 54 degrees at summer solstice at latitude 59.66N); (2) earth-sun distance (3.3% variation through the year); (3) atmospheric absorption (more at low sun angles because light passes through more atmosphere, and less at high elevations because there is less atmosphere above); (4) topographic effects -- the slope angle and aspect of each cell determine how directly it faces the sun, and steep north-facing slopes may be completely shaded.\n\nThe result is precomputed as a lookup table: 365 days x full grid, with 3-hour sub-daily integration (8 timesteps per day). This means the expensive trigonometry is done once at startup, and during the simulation the model just looks up the radiation value for each day.\n\nAt Dixon, south-facing slopes near the terminus can receive >300 W/m2 daily mean in June, while steep north-facing slopes in cirques may get <100 W/m2.',
-'terrain.py': 'Handles all the geospatial data processing. Loads the IfSAR 2010 digital elevation model (5m native resolution, survey-grade quality), reprojects it from geographic coordinates to UTM Zone 5N (the projection used for all spatial calculations), and resamples it to the model grid resolution (50m for analysis, 100m for calibration speed).\n\nFrom the DEM it derives slope and aspect at each cell using numpy gradient (central differences). These feed directly into the solar radiation calculation -- a 30-degree south-facing slope gets much more direct radiation than a flat surface at high latitudes.\n\nOptionally computes the Winstral Sx parameter for wind redistribution of snow: for each cell, it looks upwind (ESE, 100 degrees, based on Gulf of Alaska storm analysis) and measures how sheltered or exposed the cell is relative to the surrounding terrain. Sheltered leeward areas accumulate more wind-deposited snow. However, calibration could not constrain this parameter (D-011, D-015), so k_wind is currently fixed at 0.',
-'snowpack.py': 'Tracks the snow water equivalent (SWE) at every grid cell and determines the surface type, which controls which radiation factor the melt equation uses.\n\nEach day: (1) any snowfall from the precipitation module is added to the cell\'s SWE; (2) melt energy from the melt module is applied -- first melting snow (reducing SWE), and if all snow is gone, the remaining energy melts ice or firn beneath.\n\nThe surface type assignment: if SWE > 0, the surface is "snow" (r_snow used, higher albedo). If SWE = 0 and the cell is above the median glacier elevation, it is "firn" (old compacted snow, also uses r_snow). If SWE = 0 and below the firn line, it is bare "ice" (uses r_ice = 2 * r_snow, darker surface absorbs more radiation, melts faster).\n\nThis creates a positive feedback: once snow melts away exposing darker ice, that ice melts faster, creating a "melt acceleration" through the summer. This is especially important at mid-elevations near the ELA where the transition from snow-covered to ice-exposed determines the annual mass balance.',
-'fast_model.py': 'The computational engine of the entire project. This is a monolithic Numba-compiled function that combines ALL the physics from the other modules (temperature, precipitation, melt, snowpack) into a single JIT-compiled kernel that runs at near-C speed.\n\nFor each day in the simulation:\n1. Temperature transfer: apply monthly regression coefficients to convert Nuka SNOTEL temperature to on-glacier reference (currently identity transfer -- raw Nuka with calibrated lapse)\n2. Temperature distribution: lapse from reference to every cell\n3. Precipitation distribution: correction, elevation gradient, wind factor\n4. Rain/snow partitioning: linear transition around T0\n5. Snowfall accumulation: add to each cell\'s SWE\n6. Melt computation: elevation-dependent MF, radiation factor by surface type, DETIM Method 2\n7. Snowpack update: remove melted snow, update surface type\n8. Runoff tracking: melt + rain = daily runoff for each cell\n\nAt 100m resolution (289 x 117 grid, 4,011 glacier cells), one water year (365 days) runs in ~240ms. This speed is essential: the MCMC sampler calls this function 240,000 times during calibration (24 walkers x 10,000 steps), so even at 240ms/call, the full calibration takes 8-10 hours.\n\nThe FastDETIM class wraps this kernel with a Python-friendly interface, handles initial SWE setup, and extracts stake-elevation mass balances for comparison with observations.',
-'massbalance.py': 'Integrates the spatially distributed melt and accumulation grids into the summary metrics needed for calibration and analysis.\n\nGlacier-wide specific balance: averages the net balance (accumulation - melt) across all glacier cells and converts from mm to m w.e. This is compared against the Hugonnet geodetic mass balance (-0.939 m w.e./yr for 2000-2020).\n\nPoint balance extraction: for each stake site (ABL at 804m, ELA at 1078m, ACC at 1293m), averages the net balance of all cells within an elevation tolerance (50m band). These are compared against the 25 field stake measurements.\n\nAlso provides data loading utilities for the stake observation CSV and Hugonnet geodetic CSV.',
-'calibration.py': 'Provides the objective/likelihood functions that tell the optimizer and MCMC sampler how well a parameter set fits the observations.\n\nThe cost function combines three data types:\n(1) Stake residuals: 25 measurements at 3 elevations, each weighted by 1/sigma^2 (inverse variance). Stakes with lower measurement uncertainty get more weight. Typical sigma = 0.10-0.15 m w.e. for measured, 0.30 for estimated.\n(2) Geodetic: the 20-year mean modeled balance must match Hugonnet (-0.939 +/- 0.122 m w.e./yr). If the residual exceeds the reported uncertainty, a hard penalty (lambda=50) is applied. This prevents the optimizer from matching short-term stakes while violating the long-term mass loss.\n(3) Snowline: 19 valid years of satellite-derived snowline elevations, with sigma=75m uncertainty accounting for spatial spread, model grid resolution, and temporal mismatch.\n\nFor the MCMC sampler, this becomes a log-likelihood with Gaussian priors on MF and T0. The DE optimizer minimizes the negative log-likelihood.',
-'climate.py': 'Handles all climate data I/O and the critical multi-station gap-filling pipeline (D-025).\n\nThe raw Nuka SNOTEL record has significant gaps: WY2001 had 282 days missing temperature, WY2005 had 157 days, WY2020 had a 192-day precipitation gap (1,019mm of precipitation lost!). The original approach -- forward-fill then fillna(0) -- set summer temperatures to 0C in gap years, killing all melt and producing absurd calibration results.\n\nThe gap-fill cascade uses 5 nearby SNOTEL stations as backup sources, each with monthly regression transfer coefficients computed from overlapping valid days:\n1. Middle Fork Bradley (701m, 16km, r=0.877 vs Dixon) -- best predictor\n2. McNeil Canyon (411m, 24km) -- covers WY2001 gaps\n3. Anchor River Divide (503m, 34km) -- longest record\n4. Kachemak Creek (503m, 14km) -- discontinued 2019\n5. Lower Kachemak (597m, 13km) -- since 2015 only\n\nFor each missing day, the cascade tries Nuka first, then MFB, then McNeil, etc. Precipitation uses ratio scaling. Remaining 1-3 day gaps use linear interpolation, and any still missing get DOY climatology.\n\nResult: 91.3% original Nuka, 6.0% MFB, 1.8% McNeil, zero NaN. WY2005 summer temperature corrected from 0C to 8.5C.',
-'snowline_validation.py': 'Implements the independent spatial validation against 22 years (1999-2024) of satellite-derived snowline observations -- data that was never used in calibration.\n\nFor each year: (1) loads the digitized snowline shapefile (UTM 5N coordinates); (2) rasterizes it onto the model grid; (3) runs the model to the snowline observation date; (4) extracts the modeled snow/ice boundary (the elevation contour where net balance = 0); (5) compares the mean elevation, spatial pattern, and mass balance at the observed snowline positions.\n\nWith the CAL-013 parameters: RMSE = 90m, mean bias = +32m (model places snowline slightly too high), correlation = 0.73. The structural limitation is that DETIM produces spatially smooth snowlines (std 6-22m across the glacier width) while real snowlines are much more variable (std 24-69m) due to wind redistribution and aspect effects that the model cannot capture. The model also over-amplifies interannual variability (modeled std 129m vs observed 63m) and shows systematic +88 to +178m bias in recent years (2019-2024).',
-'behavioral_filter.py': 'Post-hoc quality control for the MCMC posterior. Takes candidate parameter sets and screens them against additional validation criteria that were too expensive to include in the MCMC likelihood directly.\n\nThe filter runs each candidate through: (1) a 22-year snowline simulation and scores the RMSE against observed snowline elevations; (2) a multi-year area evolution simulation using the delta-h parameterization, checking the modeled glacier area at 6 checkpoints (2000, 2005, 2010, 2015, 2020, 2025) against manually digitized outlines.\n\nFor CAL-013, the area RMSE threshold was set at 1.0 km2. All 1,000 posterior samples passed (100%), meaning the snowline-informed posterior was already consistent with observed area retreat (40.11 to 38.34 km2). This validates that the multi-objective calibration produces physically consistent parameter sets.',
-'glacier_dynamics.py': 'Handles how the glacier changes shape over time as it gains or loses mass. This is essential for projections: as the climate warms, the glacier thins and shrinks, which changes its elevation distribution and therefore its mass balance.\n\nThe core is the Huss et al. (2010) delta-h parameterization: when the glacier loses mass in a given year, the thinning is not uniform. Instead, it follows an empirical pattern where the terminus thins the most and the headwall thins the least. For Dixon (~40 km2, "large" class): the shape exponent gamma=6 concentrates thinning very strongly at the terminus.\n\nIce thickness comes from the Farinotti et al. (2019) consensus estimate -- a global dataset combining 5 different ice thickness models. For Dixon: mean thickness 173m, total volume 6.87 km3. When cumulative thinning at any cell exceeds its ice thickness, that cell deglaciates: the surface elevation drops to bedrock, the cell is removed from the glacier mask, and the glacier shrinks.\n\nAs the glacier loses area and drops below 20 km2, it automatically switches to the "medium" size class with different thinning patterns (gamma=4, more distributed thinning). Below 5 km2, "small" class (gamma=2, even more distributed).\n\nAlso includes Bahr et al. (1997) volume-area scaling (V = 0.034 * A^1.36) as a consistency check: if modeled volume diverges more than 3x from the V-A prediction, a warning is raised.',
-'climate_projections.py': 'Prepares future climate forcing from CMIP6 global climate models for the projection simulations (2026-2100).\n\nData source: NASA NEX-GDDP-CMIP6, a bias-corrected, downscaled dataset at 0.25 degree resolution (~25 km), daily timestep, available on AWS S3 (no authentication needed). The model extracts the single pixel nearest to Dixon Glacier (59.62N, 150.88W).\n\n5 GCMs selected for good high-latitude performance and inter-model spread: ACCESS-CM2 (Australia), EC-Earth3 (Europe), MPI-ESM1-2-HR (Germany), MRI-ESM2-0 (Japan), NorESM2-MM (Norway).\n\n2 scenarios downloaded: SSP2-4.5 (moderate mitigation, ~2.7C global warming by 2100) and SSP5-8.5 (fossil-fuel intensive, ~4.4C warming).\n\nBias correction: monthly delta method against Nuka SNOTEL 1991-2020 climatology. Additive for temperature (GCM monthly mean adjusted to match historical), multiplicative for precipitation (ratio scaling). This preserves the GCM\'s interannual variability and trend while centering on the local observed climate.',
-'routing.py': 'Converts the spatially distributed daily meltwater and rainfall into a time series of discharge at the glacier outlet.\n\nUses three parallel linear reservoirs representing different flow pathways through the glacier:\n- Fast reservoir (60% of runoff, k=0.3/day, residence time ~3 days): supraglacial streams and moulins. Water that flows over the glacier surface or through crevasses reaches the outlet quickly.\n- Slow reservoir (30%, k=0.05/day, ~20 days): subglacial channels. Water that reaches the glacier bed drains more slowly through the subglacial drainage system.\n- Groundwater (10%, k=0.01/day, ~100 days): water that enters the groundwater system beneath and around the glacier, providing baseflow even in winter.\n\nEach reservoir fills with its fraction of daily runoff and drains at a rate proportional to its current storage (Q = k * S). The sum of all three reservoirs gives total discharge.\n\nParameters are fixed (not calibrated) because there are no discharge observations at Dixon to constrain them. The values are typical for temperate glaciers from Hock & Jansson (2005). The main purpose is peak water analysis: the 11-year running mean of ensemble-mean discharge identifies when glacier discharge peaks before declining as the ice reservoir depletes.'
-};
+  if (document.getElementById('chart-stakes')) {
+    var sites=['ABL','ELA','ACC'], colors=['#ef4444','#6c8cff','#22c55e'];
+    Plotly.newPlot('chart-stakes', sites.map(function(site,si){
+      var d=DATA.stakes.filter(function(s){return s.site===site&&s.period==='annual';});
+      return{x:d.map(function(s){return s.year;}),y:d.map(function(s){return s.mb;}),
+        error_y:{type:'data',array:d.map(function(s){return s.unc;}),visible:true,color:colors[si]},
+        name:site+' ('+d[0].elev+'m)',type:'scatter',mode:'markers+lines',
+        marker:{color:colors[si],size:8},line:{color:colors[si]}};
+    }), Object.assign({},L,{title:{text:'Annual Stake Mass Balance',font:{color:'#5eead4'}},
+      yaxis:Object.assign({},L.yaxis,{title:'m w.e.'})}), {responsive:true});
+  }
 
-function openModulePanel(name) {
-  const m = MODULES.find(x=>x.name===name); if(!m) return;
-  const frag = document.createDocumentFragment();
-  frag.appendChild(el('h2',{css:'color:var(--accent2)'},m.name));
-  frag.appendChild(el('p',{css:'color:var(--accent);font-size:12px;margin-bottom:4px'},m.role+' \u00b7 '+m.lines+' lines'));
-  frag.appendChild(el('p',{css:'font-size:11px;color:var(--text3);margin-bottom:12px'},'dixon_melt/'+m.name));
+  if (document.getElementById('chart-snowlines')) {
+    Plotly.newPlot('chart-snowlines', [
+      {x:DATA.snowlines.map(function(s){return s.year;}),y:DATA.snowlines.map(function(s){return s.mean;}),
+       error_y:{type:'data',array:DATA.snowlines.map(function(s){return s.std;}),visible:true,color:'#6c8cff44'},
+       name:'Mean',type:'scatter',mode:'markers+lines',marker:{color:'#6c8cff',size:6},line:{color:'#6c8cff'}},
+      {x:DATA.snowlines.map(function(s){return s.year;}),y:DATA.snowlines.map(function(s){return s.median;}),
+       name:'Median',type:'scatter',mode:'markers',marker:{color:'#5eead4',size:5,symbol:'diamond'}}
+    ], Object.assign({},L,{title:{text:'Snowline Elevation (22 years)',font:{color:'#5eead4'}},
+      yaxis:Object.assign({},L.yaxis,{title:'Elevation (m)'})}), {responsive:true});
+  }
 
-  // Comprehensive explanation
-  const explain = MODULE_EXPLAIN[m.name] || m.details;
-  explain.split('\n\n').forEach(para => {
-    frag.appendChild(el('p',{css:'margin-bottom:10px;line-height:1.7'},para));
-  });
+  if (document.getElementById('chart-area')) {
+    Plotly.newPlot('chart-area', [{
+      x:DATA.areas.map(function(a){return a.year;}),y:DATA.areas.map(function(a){return a.area;}),
+      type:'scatter',mode:'markers+lines',marker:{color:'#f59e0b',size:10},line:{color:'#f59e0b'},name:'Digitized'
+    }], Object.assign({},L,{title:{text:'Glacier Area Evolution',font:{color:'#5eead4'}},
+      yaxis:Object.assign({},L.yaxis,{title:'Area (km2)',range:[37,41]})}), {responsive:true});
+  }
 
-  if(m.eqs.length){
-    frag.appendChild(el('h3',{css:'color:var(--accent);margin:20px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Equations in this module'));
-    m.eqs.forEach(eqId=>{
-      const eq=EQUATIONS.find(e=>e.id===eqId);if(!eq)return;
-      const box=el('div',{css:'padding:10px;background:var(--bg3);border-radius:6px;margin:6px 0;cursor:pointer;border-left:3px solid var(--accent)',click:()=>navTo('equations','eq-'+eqId)});
-      box.appendChild(el('span',{cls:'badge badge-param'},eqId));
-      box.appendChild(txt(' '+eq.name));
-      const math=el('div',{css:'margin-top:6px;text-align:center'}); math.textContent='$$'+eq.latex+'$$'; box.appendChild(math);
-      // Show first paragraph of explanation
-      const eqExplain = EQ_EXPLAIN[eqId] || eq.pe;
-      const firstPara = eqExplain.split('\n\n')[0];
-      box.appendChild(el('p',{css:'font-size:12px;color:var(--text2);margin:6px 0 0;line-height:1.6'},firstPara));
-      if(eqExplain.includes('\n\n')) box.appendChild(el('p',{css:'font-size:11px;color:var(--accent);margin:4px 0 0'},'Click to read full explanation \u2192'));
-      frag.appendChild(box);
-    });
+  if (document.getElementById('chart-sensitivity')) {
+    var ls=DATA.sensitivity.filter(function(s){return s.param==='lapse_rate';});
+    Plotly.newPlot('chart-sensitivity', [
+      {x:ls.map(function(s){return s.value;}),y:ls.map(function(s){return s.bias;}),
+       name:'Geodetic bias',type:'scatter',mode:'markers+lines',marker:{color:'#6c8cff',size:8},line:{color:'#6c8cff'}},
+      {x:ls.map(function(s){return s.value;}),y:ls.map(function(s){return s.stake_rmse;}),
+       name:'Stake RMSE',type:'scatter',mode:'markers+lines',marker:{color:'#ef4444',size:8},line:{color:'#ef4444'},yaxis:'y2'}
+    ], Object.assign({},L,{title:{text:'Lapse Rate Sensitivity',font:{color:'#5eead4'}},
+      xaxis:Object.assign({},L.xaxis,{title:'Lapse Rate (C/km)'}),
+      yaxis:Object.assign({},L.yaxis,{title:'Geodetic Bias',titlefont:{color:'#6c8cff'}}),
+      yaxis2:{title:'Stake RMSE',titlefont:{color:'#ef4444'},overlaying:'y',side:'right',gridcolor:'#2a2d42'}}),
+      {responsive:true});
   }
-  if(m.params.length){
-    frag.appendChild(el('h3',{css:'color:var(--accent);margin:20px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Parameters & Constants'));
-    const ptable=el('table',{css:'font-size:12px'});
-    const pth=el('thead');const ptr=el('tr');
-    ['Name','Role'].forEach(h=>ptr.appendChild(el('th',{css:'padding:4px 8px;font-size:11px'},h)));
-    pth.appendChild(ptr);ptable.appendChild(pth);
-    const ptb=el('tbody');
-    const paramDescriptions = {
-      'SNOTEL_ELEV':'Station elevation: 375m (1230 ft, D-013)',
-      'DIXON_AWS_ELEV':'On-glacier AWS: 1078m at ELA (D-023)',
-      'PSI_A':'Atmospheric transmissivity: 0.75 (clear-sky)',
-      'SOLAR_CONSTANT':'Top-of-atmosphere irradiance: 1368 W/m2',
-      'DELTAH_PARAMS':'Huss (2010) thinning coefficients by size class',
-      'VA_C':'Volume-area scaling coefficient: 0.034',
-      'VA_GAMMA':'Volume-area scaling exponent: 1.36',
-      'DEFAULT_ROUTING':'Reservoir coefficients: k_fast=0.3, k_slow=0.05, k_gw=0.01',
-      'MF':'Melt factor: 7.30 mm/d/K (calibrated)',
-      'MF_grad':'Melt factor gradient: -0.0042 mm/d/K/m',
-      'r_snow':'Radiation factor snow: 1.41e-3 (calibrated)',
-      'r_ice':'Radiation factor ice: 2 x r_snow = 2.82e-3',
-      'lapse_rate':'Temperature lapse: -5.0 C/km (fixed)',
-      'precip_corr':'Precipitation correction: 1.61 (calibrated)',
-      'precip_grad':'Precipitation gradient: 0.0007 /m',
-      'T0':'Rain/snow threshold: 0.011 C (calibrated)',
-      'k_wind':'Wind redistribution strength: 0 (fixed, D-015)',
-      'internal_lapse':'On-glacier lapse rate (same as lapse_rate)',
-      'ICE_DENSITY':'Ice density: 900 kg/m3',
-      'WATER_DENSITY':'Water density: 1000 kg/m3',
-      'k_fast':'Fast reservoir: 0.3/day (~3 day residence)',
-      'k_slow':'Slow reservoir: 0.05/day (~20 day residence)',
-      'k_gw':'Groundwater: 0.01/day (~100 day residence)',
-      'f_fast':'Fraction to fast: 60%',
-      'f_slow':'Fraction to slow: 30%',
-      'TEMP_TRANSFER_TO_NUKA':'Monthly regression coefficients for gap-fill',
-      'PRECIP_RATIO_NUKA_OVER_MFB':'Monthly precip ratios Nuka/MFB'
-    };
-    m.params.forEach(p=>{
-      const tr=el('tr');
-      tr.appendChild(el('td',{css:'padding:4px 8px;color:var(--accent);font-family:"Fira Code",monospace;font-feature-settings:"calt" 0;font-size:11px'},p));
-      tr.appendChild(el('td',{css:'padding:4px 8px;font-size:12px'},paramDescriptions[p]||p));
-      ptb.appendChild(tr);
-    });
-    ptable.appendChild(ptb);frag.appendChild(ptable);
-  }
-  if(m.decisions.length){
-    frag.appendChild(el('h3',{css:'color:var(--accent);margin:20px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Design Decisions'));
-    m.decisions.forEach(did=>{
-      const dec=DECISIONS.find(x=>x.id===did);
-      const row=el('div',{css:'padding:8px;cursor:pointer;border-bottom:1px solid var(--border);border-radius:4px',click:()=>openDecPanel(did)});
-      row.appendChild(el('span',{cls:'badge badge-decision'},did));
-      if(dec) {
-        row.appendChild(txt(' '+dec.t));
-        row.appendChild(el('p',{css:'font-size:11px;color:var(--text3);margin:4px 0 0;padding-left:8px'},dec.s));
-      }
-      frag.appendChild(row);
-    });
-  }
-  // Call graph
-  frag.appendChild(el('h3',{css:'color:var(--accent);margin:20px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Dependencies'));
-  if(m.calledBy.length){
-    frag.appendChild(el('p',{css:'font-size:12px;color:var(--text3);margin-bottom:4px'},'Used by:'));
-    const w=el('div',{css:'display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px'});
-    m.calledBy.forEach(c=>w.appendChild(el('span',{cls:'dp-tag',click:()=>openModulePanel(c)},c)));
-    frag.appendChild(w);
-  } else {
-    frag.appendChild(el('p',{css:'font-size:12px;color:var(--text3)'},'No direct dependents in the model package.'));
-  }
-  openPanel(frag);
 }
 
-// ═══════════ DECISION PANEL (comprehensive) ═══════════
-function openDecPanel(id) {
-  const d=DECISIONS.find(x=>x.id===id);if(!d)return;
-  const frag=document.createDocumentFragment();
-  frag.appendChild(el('h2',{css:'color:var(--accent2)'},d.id+': '+d.t));
-  frag.appendChild(el('p',{css:'font-size:12px;color:var(--text3);margin-bottom:12px'},d.d));
+// ── Decisions View ──────────────────────────────────────────────────
 
-  // Flags
-  const flagRow=el('div',{css:'display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap'});
-  if(d.fl.includes('critical'))flagRow.appendChild(el('span',{cls:'badge badge-low'},'CRITICAL FIX'));
-  if(d.fl.includes('superseded'))flagRow.appendChild(el('span',{cls:'badge badge-med'},'SUPERSEDED'));
-  if(d.fl.includes('rejected'))flagRow.appendChild(el('span',{cls:'badge badge-med'},'REJECTED'));
-  if(d.fl.includes('deferred'))flagRow.appendChild(el('span',{cls:'badge badge-med'},'DEFERRED'));
-  if(d.fl.includes('single_source'))flagRow.appendChild(el('span',{cls:'badge badge-med'},'SINGLE SOURCE'));
-  if(d.fl.includes('judgment'))flagRow.appendChild(el('span',{cls:'badge badge-med'},'JUDGMENT CALL'));
-  if(flagRow.children.length) frag.appendChild(flagRow);
+function renderDecisions() {
+  var v = document.getElementById('view-decisions');
+  clearChildren(v);
+  v.appendChild(el('h1', {textContent: 'Decision Log (D-001 through D-031)'}));
+  v.appendChild(el('p', {textContent: 'Every modeling decision with full rationale, alternatives, and deep explanation. Click to expand.', style:{color:'#a0a4b8',marginBottom:'20px'}}));
 
-  // Summary - in a highlighted box
-  const sumBox=el('div',{css:'background:var(--bg3);border-radius:6px;padding:12px;margin-bottom:16px;border-left:3px solid var(--accent2)'});
-  sumBox.appendChild(el('p',{css:'margin:0;line-height:1.7'},d.s));
-  frag.appendChild(sumBox);
-
-  // Evidence
-  frag.appendChild(el('h3',{css:'color:var(--accent);margin:16px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Evidence Base ('+d.cit.length+' source'+(d.cit.length!==1?'s':'')+')'));
-  if(!d.cit.length) {
-    frag.appendChild(el('p',{css:'color:var(--text3);font-style:italic'},'No external citations. This was either a bug fix or an author judgment call based on calibration results.'));
-  }
-  d.cit.forEach(c=>{
-    const row=el('div',{css:'padding:8px;margin:4px 0;background:var(--bg);border-radius:4px;display:flex;align-items:flex-start;gap:8px'});
-    row.appendChild(el('span',{cls:'badge badge-'+c.r,css:'flex-shrink:0'},c.r));
-    row.appendChild(el('span',{css:'font-size:13px'},c.t));
-    frag.appendChild(row);
+  var allTags=['all','fix','design','data','cal','val','proj'];
+  var tagLabels={all:'All',fix:'Bug Fixes',design:'Design',data:'Data',cal:'Calibration',val:'Validation',proj:'Projection'};
+  var tagBar = el('div', {className: 'sub-tabs', style:{marginBottom:'20px'}});
+  allTags.forEach(function(t, i) {
+    var btn = el('div', {className: 'sub-tab' + (i===0?' active':''), textContent: tagLabels[t]});
+    btn.addEventListener('click', function() {
+      tagBar.querySelectorAll('.sub-tab').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      filterDecisions(t);
+    });
+    tagBar.appendChild(btn);
   });
+  v.appendChild(tagBar);
 
-  // Alternatives
-  frag.appendChild(el('h3',{css:'color:var(--accent);margin:16px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Alternatives Considered'));
-  frag.appendChild(el('p',{css:'font-size:13px;line-height:1.7'},d.alt));
+  var listContainer = el('div', {id: 'decision-list'});
+  v.appendChild(listContainer);
 
-  // Parameters
-  if(d.p.length){
-    frag.appendChild(el('h3',{css:'color:var(--accent);margin:16px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Parameters Affected'));
-    const w=el('div',{css:'display:flex;flex-wrap:wrap;gap:6px'});
-    d.p.forEach(p=>w.appendChild(el('span',{cls:'badge badge-param',css:'font-size:12px;padding:4px 10px'},p)));
-    frag.appendChild(w);
-  }
+  DATA.decisions.forEach(function(dec) {
+    var card = el('div', {className: 'decision-card', id: 'dec-' + dec.id});
+    card.setAttribute('data-tags', dec.tags.join(','));
 
-  // Dependency chain
-  if(d.dep.length || d.fwd.length) {
-    frag.appendChild(el('h3',{css:'color:var(--accent);margin:16px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Decision Chain'));
-    if(d.dep.length){
-      frag.appendChild(el('p',{css:'font-size:12px;color:var(--text3);margin-bottom:4px'},'This decision builds on:'));
-      d.dep.forEach(did=>{
-        const dec=DECISIONS.find(x=>x.id===did);
-        const row=el('div',{css:'padding:8px;cursor:pointer;border-left:3px solid var(--accent2);margin:4px 0 4px 8px;padding-left:12px;border-radius:0 4px 4px 0',click:()=>openDecPanel(did)});
-        row.appendChild(el('span',{cls:'badge badge-decision'},did));
-        if(dec) {
-          row.appendChild(txt(' '+dec.t));
-          row.appendChild(el('p',{css:'font-size:11px;color:var(--text3);margin:2px 0 0'},dec.s.substring(0,120)+(dec.s.length>120?'...':'')));
-        }
-        frag.appendChild(row);
+    var head = el('div', {className: 'decision-head'});
+    head.appendChild(el('span', {className: 'decision-id', textContent: dec.id}));
+    head.appendChild(el('span', {className: 'decision-title', textContent: dec.title}));
+    dec.tags.forEach(function(t) {
+      head.appendChild(el('span', {className: 'tag tag-' + t, textContent: t}));
+    });
+    head.appendChild(el('span', {className: 'decision-date', textContent: dec.date}));
+    head.appendChild(el('span', {className: 'decision-chevron', textContent: '\u25B6'}));
+    head.addEventListener('click', function() { card.classList.toggle('expanded'); });
+    card.appendChild(head);
+
+    var body = el('div', {className: 'decision-body'});
+    dec.text.split('\n').forEach(function(para) {
+      if (para.trim()) body.appendChild(el('p', {textContent: para.trim()}));
+    });
+
+    if (dec.alternatives) {
+      var altBox = el('div', {style:{background:'#1e2030',borderRadius:'6px',padding:'12px 16px',margin:'12px 0'}});
+      altBox.appendChild(el('div', {textContent: 'Alternatives Considered', style:{fontSize:'12px',fontWeight:'600',color:'#f59e0b',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'6px'}}));
+      altBox.appendChild(el('p', {textContent: dec.alternatives, style:{color:'#a0a4b8',margin:'0'}}));
+      body.appendChild(altBox);
+    }
+
+    if (dec.why) {
+      var whyBox = el('div', {className: 'why-box'});
+      whyBox.appendChild(el('div', {className: 'why-box-title', textContent: 'Deep Explanation -- Why This Matters'}));
+      dec.why.split('\n\n').forEach(function(para) {
+        if (para.trim()) whyBox.appendChild(el('p', {textContent: para.trim(), style:{margin:'0 0 8px 0'}}));
       });
+      body.appendChild(whyBox);
     }
-    if(d.fwd.length){
-      frag.appendChild(el('p',{css:'font-size:12px;color:var(--text3);margin:8px 0 4px'},'Required by:'));
-      d.fwd.forEach(did=>{
-        const dec=DECISIONS.find(x=>x.id===did);
-        const row=el('div',{css:'padding:8px;cursor:pointer;border-left:3px solid var(--accent);margin:4px 0 4px 8px;padding-left:12px;border-radius:0 4px 4px 0',click:()=>openDecPanel(did)});
-        row.appendChild(el('span',{cls:'badge badge-decision'},did));
-        if(dec) row.appendChild(txt(' '+dec.t));
-        frag.appendChild(row);
-      });
-    }
-  }
 
-  // Related modules
-  const relMods = MODULES.filter(m=>m.decisions.includes(d.id));
-  if(relMods.length) {
-    frag.appendChild(el('h3',{css:'color:var(--accent);margin:16px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Source Code Affected'));
-    relMods.forEach(m=>{
-      frag.appendChild(el('div',{css:'padding:6px 0;cursor:pointer',click:()=>openModulePanel(m.name)},[
-        el('span',{css:'color:var(--accent);font-family:"Fira Code",monospace;font-feature-settings:"calt" 0;font-size:12px'},m.name),
-        txt(' \u2014 '+m.role)
-      ]));
+    card.appendChild(body);
+    listContainer.appendChild(card);
+  });
+}
+
+function filterDecisions(tag) {
+  document.querySelectorAll('.decision-card').forEach(function(card) {
+    card.style.display = (tag === 'all' || card.getAttribute('data-tags').indexOf(tag) >= 0) ? '' : 'none';
+  });
+}
+
+function expandDecision(id) {
+  var card = document.getElementById('dec-' + id);
+  if (card) {
+    card.classList.add('expanded');
+    card.scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+}
+
+// ── Equations View ──────────────────────────────────────────────────
+
+function renderEquations() {
+  var v = document.getElementById('view-equations');
+  clearChildren(v);
+  v.appendChild(el('h1', {textContent: 'Model Equations'}));
+  v.appendChild(el('p', {textContent: 'LaTeX-rendered equations with explanations, variable tables, and worked examples using real Dixon numbers.', style:{color:'#a0a4b8',marginBottom:'20px'}}));
+
+  DATA.equations.forEach(function(eq) {
+    var card = el('div', {className: 'eq-card'});
+    card.appendChild(el('div', {className: 'eq-card-title', textContent: eq.title}));
+
+    var eqDiv = el('div', {className: 'eq-main'});
+    eqDiv.textContent = '$$' + eq.latex + '$$';
+    card.appendChild(eqDiv);
+
+    eq.explain.split('\n\n').forEach(function(para) {
+      if (para.trim()) card.appendChild(el('p', {className: 'eq-explain', textContent: para.trim()}));
     });
-  }
 
-  // Impact
-  frag.appendChild(el('h3',{css:'color:var(--accent);margin:16px 0 8px;border-top:1px solid var(--border);padding-top:16px'},'Impact'));
-  frag.appendChild(el('p',{css:'font-style:italic;line-height:1.7'},d.imp));
-  openPanel(frag);
-}
-
-// ═══════════ BUILD ARCHITECTURE VIEW ═══════════
-(function(){
-const view = document.getElementById('architecture');
-
-// Stats row
-const g1=el('div',{cls:'grid-3',css:'margin-bottom:24px'});
-[[17,'Source Files'],[11,'Core Equations'],[28,'Design Decisions']].forEach(([n,l])=>{
-  const c=el('div',{cls:'card stat'});c.appendChild(el('div',{cls:'num'},String(n)));c.appendChild(el('div',{cls:'label'},l));g1.appendChild(c);
-});
-view.appendChild(g1);
-const g2=el('div',{cls:'grid-3',css:'margin-bottom:24px'});
-[[13,'Calibration Runs'],[6,'Calibrated Params'],['40.1 km\u00b2','Glacier Area (2000)']].forEach(([n,l])=>{
-  const c=el('div',{cls:'card stat'});c.appendChild(el('div',{cls:'num'},String(n)));c.appendChild(el('div',{cls:'label'},l));g2.appendChild(c);
-});
-view.appendChild(g2);
-
-// ASCII diagram
-const dCard=el('div',{cls:'card'});
-dCard.appendChild(el('h3',{},'Data Flow Diagram \u2014 click highlighted modules'));
-const dCont=el('div',{cls:'arch-container'});
-
-// Each line is an array of [text, type] pairs. type: 't'=text, 'm'=module, 'd'=decision
-const lines = [
-["             DIXON GLACIER DETIM v13 -- COMPLETE DATA FLOW DIAGRAM\n"],
-["             =====================================================\n"],
-["\n"],
-[" INPUT DATA FILES                                                                      \n"],
-[" ~~~~~~~~~~~~~~~~                                                                      \n"],
-[" nuka_snotel_full.csv (375m, 35yr)    IfSAR DTM 5m (2010)       stake_observations.csv \n"],
-[" snotel_stations/ (5 backup)          glacier_outline_rgi7       hugonnet.csv (geodetic)\n"],
-[" dixon_gap_filled_climate.csv         ice_thickness (Farinotti)  snowline shapefiles    \n"],
-[" CMIP6 NEX-GDDP (10 CSVs)            glacier_outlines/digitized manual_snowline_elev   \n"],
-["       |                                     |                          |               \n"],
-["       v                                     v                          |               \n"],
-["  +------------------+    +------------------+   +--------------+       |               \n"],
-["  | ","climate.py","m","        |    | ","terrain.py","m","        |   | ","solar.py","m","      |       |               \n"],
-["  |                  |    |                  |   |              |       |               \n"],
-["  | 5-station gap-   |    | Load DEM 5m      |   | Solar geom   |       |               \n"],
-["  | fill cascade     |    | Reproject UTM 5N |   | (Oke 1987)   |       |               \n"],
-["  | (","D-025","d",")           |    | Resample 100m   |   | Topo correct |       |               \n"],
-["  | Monthly transfer |    | Slope / Aspect   |   | Self-shading |       |               \n"],
-["  | coeff (5 stn)    |    | Glacier mask     |   | 365 DOY LUT  |       |               \n"],
-["  | Nuka 91.3%       |    | Winstral Sx      |   | 3-hr integr  |       |               \n"],
-["  | MFB 6%, McN 1.8% |    | (","D-011","d",")          |   | PSI_a = 0.75 |       |               \n"],
-["  +--------+---------+    +--------+---------+   +------+-------+       |               \n"],
-["           |                       |                    |               |               \n"],
-["           +-- T(t), P(t) daily ---+--- grid, mask -----+               |               \n"],
-["                                   |                                    |               \n"],
-["                                   v                                    |               \n"],
-["  +-----------------------------------------------------------------------+             \n"],
-["  |                       ","fast_model.py","m"," (FastDETIM)                       |             \n"],
-["  |                                                                       |             \n"],
-["  |  @njit(parallel=True) -- ~240ms per water year at 100m grid           |             \n"],
-["  |  4,011 glacier cells x 365 days = 1.46 million cell-day evaluations   |             \n"],
-["  |                                                                       |             \n"],
-["  |  For each day t = 1..365:                                             |             \n"],
-["  |    1. T_ref = T_nuka(t)                (identity transfer, ","D-012","d",")    |             \n"],
-["  |    2. T_cell = T_ref + lapse*(z-z_ref) (","temperature.py","m",", -5 C/km)     |             \n"],
-["  |    3. P_cell = P*Cp*(1+grad*dz)        (","precipitation.py","m",")             |             \n"],
-["  |    4. f_snow = partition(T, T0)         (rain/snow, 2C window)        |             \n"],
-["  |    5. SWE += snowfall                  (","snowpack.py","m",", accumulation)     |             \n"],
-["  |    6. MF_cell = MF + MF_grad*(z-z_ref) (elevation-dependent, ","D-008","d",")   |             \n"],
-["  |    7. M = (MF_cell + r*Ipot) * T       (","melt.py","m",", DETIM Method 2)     |             \n"],
-["  |    8. SWE -= min(SWE, M)               (snowpack update)             |             \n"],
-["  |    9. surface_type = snow/firn/ice     (determines r_snow or r_ice)  |             \n"],
-["  |   10. runoff = melt + rain             (daily sum for routing)       |             \n"],
-["  |                                                                       |             \n"],
-["  |  Output: cum_melt[grid], cum_accum[grid], daily_runoff[t],           |             \n"],
-["  |          stake_balances[3], glacier_wide_balance                      |             \n"],
-["  +-----------------------------------------------------------------------+             \n"],
-["                                   |                                    |               \n"],
-["           +-----------+-----------+-----------+                        |               \n"],
-["           |           |           |           |                        |               \n"],
-["           v           v           v           v                        v               \n"],
-["  +------------+ +----------+ +---------+ +---------------+  +-------------------+      \n"],
-["  |","massbalance","m","  | |","routing.py","m","| |","snowline_","m","  | |","glacier_dynamics","m","| |","calibration.py","m","     |      \n"],
-["  |",".py","m","         | |          | |","validation","m","| |",".py","m","            | |                   |      \n"],
-["  | Glacier-   | |3 linear  | |         | | Delta-h       | | Phase 1: DE         |      \n"],
-["  | wide MB    | |reservoirs| | 22-year | | (Huss 2010)   | |  5 seeds x 200 iter |      \n"],
-["  | & stake    | | fast 60% | | indep.  | | Farinotti ice | |  cost: 7.17 -> 5.34 |      \n"],
-["  | extraction | | slow 30% | | RMSE    | | thickness     | | Phase 2: MCMC       |      \n"],
-["  | (","D-003","d",")     | | gw   10% | | 90m     | | Bedrock DEM   | |  24 walk x 10k step|      \n"],
-["  |            | | Q (m3/s) | | (","D-021","d",")  | | Deglaciation  | |  1,656 samples      |      \n"],
-["  +------------+ +----------+ +---------+ | (","D-018","d",")        | | Phase 4: Area filter|      \n"],
-["                                          +-------+-------+ |  1,000 survivors    |      \n"],
-["                                                  |         | (","D-028","d",")             |      \n"],
-["                                                  |         +-------------------+      \n"],
-["                                                  v                  |               \n"],
-["                                  +-------------------------------+  |               \n"],
-["                                  |   run_projection.py           |<-+               \n"],
-["                                  |                               |                  \n"],
-["                                  |  1,000 params x 5 GCMs       |                  \n"],
-["                                  |  = 5,000 runs per SSP        |                  \n"],
-["                                  |  (or 250 ranked, ","D-020","d",")       |                  \n"],
-["                                  |                               |                  \n"],
-["                                  |  ","climate_projections.py","m","       |                  \n"],
-["                                  |  Bias-correct CMIP6 (","D-019","d",")   |                  \n"],
-["                                  |                               |                  \n"],
-["                                  |  Annual loop WY2026-WY2100:   |                  \n"],
-["                                  |    FastDETIM -> annual MB     |                  \n"],
-["                                  |    delta-h -> geometry update |                  \n"],
-["                                  |    ","routing.py","m"," -> discharge    |                  \n"],
-["                                  |                               |                  \n"],
-["                                  |  Output: area, volume, MB,    |                  \n"],
-["                                  |  discharge, peak water        |                  \n"],
-["                                  |  SSP245: peak ~WY2043         |                  \n"],
-["                                  |  SSP585: peak ~WY2058         |                  \n"],
-["                                  +-------------------------------+                  \n"]
-];
-
-lines.forEach(parts => {
-  const row = el('div',{cls:'arch-row'});
-  for(let i=0;i<parts.length;i++){
-    const p = parts[i];
-    // check if next element is a type marker
-    if(i+1<parts.length && (parts[i+1]==='m'||parts[i+1]==='d')){
-      const type = parts[i+1];
-      const span = el('span',{cls:'arch-click'});
-      span.textContent = p;
-      if(type==='m'){
-        // find matching module
-        const mod = MODULES.find(m=>m.name===p || m.name.startsWith(p));
-        if(mod) span.addEventListener('click',()=>openModulePanel(mod.name));
-        span.style.color = 'var(--accent)';
-      } else {
-        span.style.color = 'var(--accent2)';
-        span.addEventListener('click',()=>{navTo('decisions','dec-'+p);openDecPanel(p);});
-      }
-      row.appendChild(span);
-      i++; // skip type marker
-    } else {
-      row.appendChild(el('span',{css:'color:var(--text2)'},p));
+    if (eq.variables && eq.variables.length > 0) {
+      card.appendChild(el('h3', {textContent: 'Variables', style:{color:'#6c8cff',marginTop:'16px'}}));
+      var vt = makeTable(['Symbol','Unit','Value','Description'],
+        eq.variables.map(function(va){return['\\('+va.sym+'\\)',va.unit,va.val,va.desc];}));
+      vt.className = 'var-table';
+      card.appendChild(vt);
     }
+
+    if (eq.example) {
+      card.appendChild(el('h3', {textContent: 'Worked Example', style:{color:'#6c8cff',marginTop:'16px'}}));
+      card.appendChild(el('div', {className: 'worked-example', textContent: eq.example}));
+    }
+
+    if (eq.codeRef) {
+      card.appendChild(el('p', {style:{fontSize:'12px',color:'#6e7291',marginTop:'12px',fontFamily:"'Fira Code', monospace"},
+        textContent: 'Source: ' + eq.codeRef}));
+    }
+
+    v.appendChild(card);
+  });
+
+  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    MathJax.typesetPromise([v]);
   }
-  dCont.appendChild(row);
-});
-dCard.appendChild(dCont);
-view.appendChild(dCard);
-
-// Module table
-const mCard=el('div',{cls:'card'});
-mCard.appendChild(el('h3',{},'Module Inventory'));
-const mt=el('table');
-const mth=el('thead');const mtr=el('tr');
-['Module','Role','Eqs','Lines'].forEach(h=>mtr.appendChild(el('th',{},h)));
-mth.appendChild(mtr);mt.appendChild(mth);
-const mtb=el('tbody');
-MODULES.forEach(m=>{
-  const tr=el('tr',{css:'cursor:pointer',click:()=>openModulePanel(m.name)});
-  tr.appendChild(el('td',{css:'color:var(--accent);font-family:"Fira Code",monospace;font-feature-settings:"calt" 0'},m.name));
-  tr.appendChild(el('td',{},m.desc));
-  tr.appendChild(el('td',{css:'text-align:center'},m.eqs.length?String(m.eqs.length):'-'));
-  tr.appendChild(el('td',{css:'text-align:center'},String(m.lines)));
-  mtb.appendChild(tr);
-});
-mt.appendChild(mtb);mCard.appendChild(mt);view.appendChild(mCard);
-})();
-
-// ═══════════ BUILD DATA VIEW ═══════════
-(function(){
-const view=document.getElementById('data');
-view.appendChild(el('h2',{css:'margin-bottom:16px'},'Data Browser'));
-
-const filterRow=el('div',{cls:'filter-row'});
-['all','climate','stakes','snowline','calibration','projection'].forEach(f=>{
-  const btn=el('div',{cls:'filter-btn'+(f==='all'?' active':''),'data-filter':f,click:function(){
-    filterRow.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-    this.classList.add('active');
-    view.querySelectorAll('.data-section').forEach(s=>s.style.display=(f==='all'||s.dataset.filter===f)?'block':'none');
-  }},f==='all'?'All':f.charAt(0).toUpperCase()+f.slice(1));
-  filterRow.appendChild(btn);
-});
-view.appendChild(filterRow);
-
-function addSection(filter,title){
-  const sec=el('div',{cls:'data-section','data-filter':filter});
-  sec.appendChild(el('h3',{css:'color:var(--accent2);margin-bottom:12px;font-size:18px'},title));
-  view.appendChild(sec);return sec;
 }
 
-// CLIMATE
-const cs=addSection('climate','Climate Forcing');
-const cc=el('div',{cls:'card'});cc.appendChild(el('h3',{},'Annual Temperature & Precipitation (1999-2025)'));
-cc.appendChild(el('div',{cls:'plotly-chart-tall',id:'chart-annual'}));
-cc.appendChild(el('p',{css:'font-size:12px'},'Source: data/climate/dixon_gap_filled_climate.csv (9,863 days, zero NaN). Gap-fill: 91.3% Nuka, 6.0% MFB, 1.8% McNeil.'));
-cs.appendChild(cc);
-const mc=el('div',{cls:'card'});mc.appendChild(el('h3',{},'Monthly Climatology'));mc.appendChild(el('div',{cls:'plotly-chart',id:'chart-monthly'}));cs.appendChild(mc);
+// ── Search View ─────────────────────────────────────────────────────
 
-// STAKES
-const ss=addSection('stakes','Stake & Geodetic Mass Balance');
-const sc=el('div',{cls:'card'});sc.appendChild(el('h3',{},'Stake Observations (25 measurements, 3 sites, WY2023-2025)'));
-sc.appendChild(el('div',{cls:'plotly-chart-tall',id:'chart-stakes'}));
-const stScroll=el('div',{cls:'table-scroll'});
-const stTable=el('table');
-const stH=el('thead');const stHr=el('tr');
-['Site','Type','Year','MB (m w.e.)','Unc.','Elev (m)'].forEach(h=>stHr.appendChild(el('th',{},h)));
-stH.appendChild(stHr);stTable.appendChild(stH);
-const stB=el('tbody');
-STAKE_DATA.forEach(s=>{
-  const tr=el('tr');
-  tr.appendChild(el('td',{css:'color:'+sColors[s.s]},s.s));
-  tr.appendChild(el('td',{},s.ty));tr.appendChild(el('td',{},String(s.yr)));
-  tr.appendChild(el('td',{css:'font-weight:600'},s.mb.toFixed(2)));
-  tr.appendChild(el('td',{},'\u00b1'+s.u.toFixed(2)));tr.appendChild(el('td',{},String(s.z)));
-  stB.appendChild(tr);
-});
-stTable.appendChild(stB);stScroll.appendChild(stTable);sc.appendChild(stScroll);ss.appendChild(sc);
+function renderSearch() {
+  var v = document.getElementById('view-search');
+  clearChildren(v);
+  v.appendChild(el('h1', {textContent: 'Search'}));
 
-const gc=el('div',{cls:'card'});gc.appendChild(el('h3',{},'Geodetic Mass Balance (Hugonnet et al. 2021)'));
-const gt=el('table');const gth=el('thead');const gtr=el('tr');
-['Period','dh/dt (m/yr)','\u00b1','MB (m w.e./yr)','\u00b1'].forEach(h=>gtr.appendChild(el('th',{},h)));
-gth.appendChild(gtr);gt.appendChild(gth);
-const gtb=el('tbody');
-GEODETIC.forEach(g=>{const tr=el('tr');[g.per,g.dh.toFixed(3),g.edh.toFixed(3),g.mb.toFixed(3),g.emb.toFixed(3)].forEach(v=>tr.appendChild(el('td',{},v)));gtb.appendChild(tr);});
-gt.appendChild(gtb);gc.appendChild(gt);ss.appendChild(gc);
+  var input = el('input', {type:'text', id:'search-input', placeholder:'Search decisions, modules, equations, data...'});
+  v.appendChild(input);
+  var results = el('div', {id: 'search-results'});
+  v.appendChild(results);
 
-// SNOWLINES
-const sls=addSection('snowline','Snowlines & Glacier Outlines');
-const slc=el('div',{cls:'card'});slc.appendChild(el('h3',{},'Snowline Elevations (22 Years, 1995-2024)'));
-slc.appendChild(el('div',{cls:'plotly-chart-tall',id:'chart-snowlines'}));
-const slScroll=el('div',{cls:'table-scroll'});
-const slT=el('table');const slTh=el('thead');const slTr=el('tr');
-['Year','Mean (m)','Median','Min','Max','Std','Samples','Source'].forEach(h=>slTr.appendChild(el('th',{},h)));
-slTh.appendChild(slTr);slT.appendChild(slTh);
-const slTb=el('tbody');
-SNOWLINES.forEach(s=>{const tr=el('tr');[s.yr,s.mn,s.md,s.mi,s.mx,s.sd,s.n,s.src].forEach(v=>tr.appendChild(el('td',{},String(v))));slTb.appendChild(tr);});
-slT.appendChild(slTb);slScroll.appendChild(slT);slc.appendChild(slScroll);sls.appendChild(slc);
+  input.addEventListener('input', function() {
+    var q = input.value.toLowerCase().trim();
+    clearChildren(results);
+    if (q.length < 2) return;
+    var hits = [];
 
-const oc=el('div',{cls:'card'});oc.appendChild(el('h3',{},'Glacier Area Evolution (Digitized Outlines)'));
-oc.appendChild(el('div',{cls:'plotly-chart',id:'chart-area'}));sls.appendChild(oc);
+    DATA.decisions.forEach(function(d) {
+      if ((d.id+' '+d.title+' '+d.text+' '+(d.why||'')+' '+(d.alternatives||'')).toLowerCase().indexOf(q) >= 0)
+        hits.push({type:'Decision',title:d.id+': '+d.title,excerpt:d.text.substring(0,150)+'...',
+          action:function(){switchView('decisions');setTimeout(function(){expandDecision(d.id);},100);}});
+    });
+    DATA.modules.forEach(function(m) {
+      if ((m.name+' '+m.description+' '+m.category).toLowerCase().indexOf(q) >= 0)
+        hits.push({type:'Module',title:m.name,excerpt:m.description.substring(0,150)+'...',
+          action:function(){switchView('architecture');setTimeout(function(){openModulePanel(m.name);},100);}});
+    });
+    DATA.equations.forEach(function(eq) {
+      if ((eq.title+' '+eq.explain+' '+eq.example).toLowerCase().indexOf(q) >= 0)
+        hits.push({type:'Equation',title:eq.title,excerpt:eq.explain.substring(0,150)+'...',
+          action:function(){switchView('equations');}});
+    });
 
-// CALIBRATION
-const cas=addSection('calibration','Calibration Posterior');
-const cac=el('div',{cls:'card'});cac.appendChild(el('h3',{},'CAL-013 Posterior Distributions (1,656 samples)'));
-const pg=el('div',{cls:'grid-2'});
-pg.appendChild(el('div',{cls:'plotly-chart',id:'chart-post-mf'}));
-pg.appendChild(el('div',{cls:'plotly-chart',id:'chart-post-pc'}));
-cac.appendChild(pg);
-const pg2=el('div',{cls:'grid-2'});
-pg2.appendChild(el('div',{cls:'plotly-chart',id:'chart-post-rs'}));
-pg2.appendChild(el('div',{cls:'plotly-chart',id:'chart-post-mg'}));
-cac.appendChild(pg2);
-cac.appendChild(el('div',{cls:'plotly-chart-tall',id:'chart-post-scatter'}));
-cas.appendChild(cac);
+    if (hits.length === 0) {
+      results.appendChild(el('p', {textContent:'No results found.',style:{color:'#6e7291',padding:'20px'}}));
+      return;
+    }
 
-// PROJECTION
-const ps=addSection('projection','Projection Outputs');
-const pc2=el('div',{cls:'card'});
-pc2.appendChild(el('h3',{},'Ensemble Projections'));
-pc2.appendChild(el('p',{},'SSP2-4.5: PROJ-009 (250 params x 5 GCMs = 1,250 runs). Peak water ~WY2043 (8.17 m3/s, 45% area).'));
-pc2.appendChild(el('p',{},'SSP5-8.5: PROJ-011 (250 params x 5 GCMs = 1,250 runs). Peak water ~WY2058 (8.54 m3/s, 21% area).'));
-pc2.appendChild(el('p',{css:'font-size:12px;color:var(--text3)'},'Projection CSVs have per-year ensemble percentiles (p05/p25/p50/p75/p95) for area, volume, mass balance, discharge.'));
-ps.appendChild(pc2);
-})();
-
-// ═══════════ BUILD DECISIONS VIEW ═══════════
-(function(){
-const view=document.getElementById('decisions');
-view.appendChild(el('h2',{css:'margin-bottom:16px'},'Decision Log (28 Decisions)'));
-view.appendChild(el('p',{css:'color:var(--text2);margin-bottom:16px'},'Click any decision ID badge to open details in the side panel.'));
-DECISIONS.forEach(d=>{
-  const card=el('div',{cls:'card',id:'dec-'+d.id});
-  const hdr=el('div',{css:'display:flex;align-items:center;gap:12px;margin-bottom:8px'});
-  hdr.appendChild(el('span',{cls:'badge badge-decision',css:'cursor:pointer',click:()=>openDecPanel(d.id)},d.id));
-  const title=el('h3',{css:'margin:0;flex:1'},d.t);hdr.appendChild(title);
-  hdr.appendChild(el('span',{css:'font-size:11px;color:var(--text3)'},d.d));
-  card.appendChild(hdr);
-  const flags=el('div',{css:'display:flex;gap:6px;margin-bottom:8px'});
-  if(d.fl.includes('critical'))flags.appendChild(el('span',{cls:'badge badge-low'},'CRITICAL'));
-  if(d.fl.includes('superseded'))flags.appendChild(el('span',{cls:'badge badge-med'},'SUPERSEDED'));
-  if(d.fl.includes('rejected'))flags.appendChild(el('span',{cls:'badge badge-med'},'REJECTED'));
-  if(d.fl.includes('deferred'))flags.appendChild(el('span',{cls:'badge badge-med'},'DEFERRED'));
-  if(d.fl.includes('single_source'))flags.appendChild(el('span',{cls:'badge badge-med'},'SINGLE SOURCE'));
-  if(d.fl.includes('judgment'))flags.appendChild(el('span',{cls:'badge badge-med'},'JUDGMENT'));
-  card.appendChild(flags);
-  card.appendChild(el('p',{},d.s));
-  if(d.dep.length||d.fwd.length){
-    const depDiv=el('div',{css:'font-size:12px;margin:4px 0'});depDiv.appendChild(txt('Deps: '));
-    d.dep.forEach((dep,i)=>{depDiv.appendChild(el('a',{click:()=>navTo('decisions','dec-'+dep)},dep));if(i<d.dep.length-1)depDiv.appendChild(txt(', '));});
-    if(d.dep.length&&d.fwd.length)depDiv.appendChild(txt(' \u2192 '));
-    d.fwd.forEach((dep,i)=>{depDiv.appendChild(el('a',{click:()=>navTo('decisions','dec-'+dep)},dep));if(i<d.fwd.length-1)depDiv.appendChild(txt(', '));});
-    card.appendChild(depDiv);
-  }
-  if(d.p.length){const pw=el('div',{css:'margin:4px 0'});d.p.forEach(p=>pw.appendChild(el('span',{cls:'badge badge-param',css:'margin:2px'},p)));card.appendChild(pw);}
-  view.appendChild(card);
-});
-
-// Cal runs table
-const cc=el('div',{cls:'card',css:'margin-top:24px'});cc.appendChild(el('h3',{},'Calibration Run History'));
-const ct=el('table');const cth=el('thead');const ctr=el('tr');
-['Run','V','Cost','Status','Notes'].forEach(h=>ctr.appendChild(el('th',{},h)));cth.appendChild(ctr);ct.appendChild(cth);
-const ctb=el('tbody');
-const stC={FAILED:'var(--red)',IMPROVED:'var(--accent3)',PROGRESS:'var(--accent3)',KILLED:'var(--text3)',BAD:'var(--red)',BEST:'var(--green)',SUCCESS:'var(--green)',DEFINITIVE:'var(--accent2)'};
-CAL_RUNS.forEach(c=>{const tr=el('tr');tr.appendChild(el('td',{},c.id));tr.appendChild(el('td',{},'v'+c.v));tr.appendChild(el('td',{},c.c));tr.appendChild(el('td',{css:'color:'+(stC[c.st]||'var(--text2)')+';font-weight:600'},c.st));tr.appendChild(el('td',{},c.n));ctb.appendChild(tr);});
-ct.appendChild(ctb);cc.appendChild(ct);view.appendChild(cc);
-})();
-
-// ═══════════ BUILD EQUATIONS VIEW ═══════════
-(function(){
-const view=document.getElementById('equations');
-view.appendChild(el('h2',{css:'margin-bottom:16px'},'Equation Reference'));
-
-// Param table
-const pc=el('div',{cls:'card',css:'margin-bottom:24px'});pc.appendChild(el('h3',{},'Calibrated Parameters (CAL-013)'));
-const pt=el('table');const pth=el('thead');const ptr=el('tr');
-['Param','Symbol','Units','Bounds','Median','95% CI','Prior'].forEach(h=>ptr.appendChild(el('th',{},h)));
-pth.appendChild(ptr);pt.appendChild(pth);
-const ptb=el('tbody');
-[['Melt factor','MF','mm/d/K','[1, 12]','7.30','[7.06, 7.58]','N(5,3)'],
- ['MF gradient','MF_grad','mm/d/K/m','[-0.01, 0]','-0.0042','[-0.0044, -0.0039]','Uniform'],
- ['Rad. factor','r_snow','mm m2/W/d/K','[0.02, 2]e-3','1.41e-3','[0.73, 1.82]e-3','Uniform'],
- ['Precip grad','precip_grad','1/m','[2e-4, 6e-3]','0.0007','[6e-4, 9e-4]','Uniform'],
- ['Precip corr','precip_corr','','[1.2, 4.0]','1.61','[1.48, 1.74]','Uniform'],
- ['Rain/snow T','T0','C','[0.5, 3.0]','0.011','[0.003, 0.029]','N(1.5,0.5)']
-].forEach(r=>{const tr=el('tr');r.forEach(v=>tr.appendChild(el('td',{},v)));ptb.appendChild(tr);});
-pt.appendChild(ptb);pc.appendChild(pt);
-pc.appendChild(el('p',{css:'margin-top:8px;font-size:12px'},'Fixed: lapse = -5.0 C/km (Gardner & Sharp 2009); r_ice = 2 x r_snow (Hock 1999 Table 4)'));
-view.appendChild(pc);
-
-EQUATIONS.forEach(eq=>{
-  const card=el('div',{cls:'card',id:'eq-'+eq.id});
-  const hdr=el('div',{css:'display:flex;align-items:center;gap:12px;margin-bottom:12px'});
-  hdr.appendChild(el('span',{cls:'badge badge-param'},eq.id));
-  hdr.appendChild(el('h3',{css:'margin:0;flex:1'},eq.name));
-  hdr.appendChild(el('span',{cls:'badge badge-'+(eq.conf==='high'?'high':'med')},eq.conf));
-  card.appendChild(hdr);
-  const eqBox=el('div',{cls:'eq-box'});eqBox.textContent='$$'+eq.latex+'$$';card.appendChild(eqBox);
-  // Comprehensive plain-English explanation
-  const explain = EQ_EXPLAIN[eq.id] || eq.pe;
-  explain.split('\n\n').forEach(para => {
-    card.appendChild(el('p',{css:'margin-bottom:10px;line-height:1.7'},para));
+    hits.slice(0, 30).forEach(function(hit) {
+      var card = el('div', {className: 'search-hit'});
+      card.appendChild(el('div', {className: 'search-hit-type', textContent: hit.type}));
+      card.appendChild(el('div', {className: 'search-hit-title', textContent: hit.title}));
+      card.appendChild(el('div', {className: 'search-hit-excerpt', textContent: hit.excerpt}));
+      card.addEventListener('click', hit.action);
+      results.appendChild(card);
+    });
+    results.appendChild(el('p', {textContent:hits.length+' result'+(hits.length!==1?'s':'')+' found',style:{color:'#6e7291',padding:'12px',fontSize:'12px'}}));
   });
-  // Vars
-  card.appendChild(el('h4',{},'Variables'));
-  const vt=el('table');const vth=el('thead');const vtr=el('tr');
-  ['Symbol','Name','Units','Range/Value'].forEach(h=>vtr.appendChild(el('th',{},h)));
-  vth.appendChild(vtr);vt.appendChild(vth);
-  const vtb=el('tbody');
-  eq.vars.forEach(v=>{const tr=el('tr');v.forEach(x=>tr.appendChild(el('td',{},x)));vtb.appendChild(tr);});
-  vt.appendChild(vtb);card.appendChild(vt);
-  // Worked example
-  const we=el('div',{cls:'worked-example'});we.appendChild(el('div',{cls:'wlabel'},'Worked Example'));we.appendChild(el('p',{css:'font-size:13px;color:var(--text2);margin:0'},eq.ex));card.appendChild(we);
-  // Code
-  const det=el('details');det.appendChild(el('summary',{},'Source Code'));
-  const pre=el('pre',{cls:'code-block'},eq.code);det.appendChild(pre);card.appendChild(det);
-  // Cite
-  card.appendChild(el('p',{css:'font-size:12px;color:var(--text3);margin-top:8px'},'Ref: '+eq.cite));
-  // Decisions
-  if(eq.decs.length){const dd=el('div',{css:'font-size:12px;margin-top:4px'});dd.appendChild(txt('Related: '));eq.decs.forEach((d,i)=>{dd.appendChild(el('a',{click:()=>openDecPanel(d)},d));if(i<eq.decs.length-1)dd.appendChild(txt(', '));});card.appendChild(dd);}
-  view.appendChild(card);
-});
-})();
-
-// ═══════════ BUILD SEARCH VIEW ═══════════
-(function(){
-const view=document.getElementById('search');
-view.appendChild(el('h2',{css:'margin-bottom:16px'},'Explorer'));
-const inp=el('input',{type:'text',id:'search-input',placeholder:'Search equations, parameters, decisions, modules...'});
-view.appendChild(inp);
-const res=el('div',{id:'search-results'});view.appendChild(res);
-inp.addEventListener('input',()=>{
-  const q=inp.value.toLowerCase().trim();res.replaceChildren();
-  if(q.length<2)return;
-  const hits=SX.filter(i=>i.tx.toLowerCase().includes(q)).slice(0,25);
-  if(!hits.length){res.appendChild(el('p',{css:'color:var(--text3);padding:12px'},'No results.'));return;}
-  const cols={Equation:'var(--accent)',Decision:'var(--accent2)',Module:'var(--green)',Parameter:'#c084fc'};
-  hits.forEach(hit=>{
-    const div=el('div',{cls:'search-hit',click:()=>{
-      navTo(hit.vw,hit.anc);
-      if(hit.ty==='Module')setTimeout(()=>openModulePanel(hit.id),100);
-      if(hit.ty==='Decision')setTimeout(()=>openDecPanel(hit.id),100);
-    }});
-    div.appendChild(el('div',{cls:'hit-type',css:'color:'+(cols[hit.ty]||'var(--text2)')},hit.ty));
-    div.appendChild(el('div',{css:'font-weight:500;margin-top:2px'},hit.nm));
-    const idx=hit.tx.toLowerCase().indexOf(q);
-    const snip=hit.tx.substring(Math.max(0,idx-40),Math.min(hit.tx.length,idx+q.length+60));
-    div.appendChild(el('div',{css:'font-size:12px;color:var(--text3);margin-top:2px'},'...'+snip+'...'));
-    res.appendChild(div);
-  });
-});
-})();
-
-// ═══════════ PLOTLY CHARTS ═══════════
-setTimeout(()=>{
-const L={paper_bgcolor:'#0f1117',plot_bgcolor:'#0f1117',font:{color:'#a0a4b8',family:'Inter'},margin:{l:50,r:20,t:30,b:40},xaxis:{gridcolor:'#2a2d42',zerolinecolor:'#2a2d42'},yaxis:{gridcolor:'#2a2d42',zerolinecolor:'#2a2d42'}};
-const C={displayModeBar:true,displaylogo:false,responsive:true};
-
-// Annual climate
-Plotly.newPlot('chart-annual',[
-  {x:ANNUAL_CLIMATE.map(d=>d.year),y:ANNUAL_CLIMATE.map(d=>d.t),type:'scatter',mode:'lines+markers',name:'Mean Temp (C)',marker:{color:'#ef4444',size:6},line:{color:'#ef4444'}},
-  {x:ANNUAL_CLIMATE.map(d=>d.year),y:ANNUAL_CLIMATE.map(d=>d.p),type:'bar',name:'Total Precip (mm)',marker:{color:'#3b82f644'},yaxis:'y2'}
-],{...L,yaxis:{...L.yaxis,title:'Temperature (C)'},yaxis2:{title:'Precipitation (mm)',overlaying:'y',side:'right',gridcolor:'transparent'},legend:{x:0.02,y:0.98,bgcolor:'transparent'}},C);
-
-// Monthly
-const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-Plotly.newPlot('chart-monthly',[
-  {x:months,y:MONTHLY_CLIM.map(d=>d.t),type:'bar',name:'Temp (C)',marker:{color:'#ef4444aa'}},
-  {x:months,y:MONTHLY_CLIM.map(d=>d.p),type:'bar',name:'Precip (mm/d)',marker:{color:'#3b82f6aa'},yaxis:'y2'}
-],{...L,barmode:'group',yaxis:{...L.yaxis,title:'Temp (C)'},yaxis2:{title:'Precip (mm/d)',overlaying:'y',side:'right',gridcolor:'transparent'},legend:{x:0.02,y:0.98,bgcolor:'transparent'}},C);
-
-// Stakes
-const traces=[];
-['annual','summer','winter'].forEach(ty=>{
-  ['ABL','ELA','ACC'].forEach(site=>{
-    const d=STAKE_DATA.filter(s=>s.s===site&&s.ty===ty);if(!d.length)return;
-    const off={ABL:-0.15,ELA:0,ACC:0.15}[site];
-    traces.push({x:d.map(s=>s.yr+off),y:d.map(s=>s.mb),error_y:{type:'data',array:d.map(s=>s.u),visible:true,color:sColors[site]+'88'},type:'scatter',mode:'markers',name:site+' '+ty,marker:{color:sColors[site],size:ty==='annual'?10:6,symbol:ty==='annual'?'circle':ty==='summer'?'triangle-down':'triangle-up'}});
-  });
-});
-Plotly.newPlot('chart-stakes',traces,{...L,yaxis:{...L.yaxis,title:'Mass Balance (m w.e.)'},xaxis:{...L.xaxis,title:'Year'},shapes:[{type:'line',x0:2022.5,x1:2025.5,y0:0,y1:0,line:{color:'#6e7291',dash:'dash',width:1}}],legend:{bgcolor:'transparent'}},C);
-
-// Snowlines
-Plotly.newPlot('chart-snowlines',[
-  {x:SNOWLINES.map(s=>s.yr),y:SNOWLINES.map(s=>s.mn),error_y:{type:'data',array:SNOWLINES.map(s=>s.sd),visible:true,color:'#6c8cff44'},type:'scatter',mode:'lines+markers',name:'Mean',marker:{color:'#6c8cff',size:7},line:{color:'#6c8cff'}},
-  {x:SNOWLINES.map(s=>s.yr),y:SNOWLINES.map(s=>s.mi),type:'scatter',mode:'lines',name:'Min',line:{color:'#6c8cff33',dash:'dot'}},
-  {x:SNOWLINES.map(s=>s.yr),y:SNOWLINES.map(s=>s.mx),type:'scatter',mode:'lines',name:'Max',line:{color:'#6c8cff33',dash:'dot'},fill:'tonexty',fillcolor:'#6c8cff0d'}
-],{...L,yaxis:{...L.yaxis,title:'Elevation (m)'},xaxis:{...L.xaxis,title:'Year'},legend:{bgcolor:'transparent'}},C);
-
-// Area
-Plotly.newPlot('chart-area',[
-  {x:OUTLINE_AREAS.map(d=>d.yr),y:OUTLINE_AREAS.map(d=>d.a),type:'scatter',mode:'lines+markers',name:'Area',marker:{color:'#5eead4',size:10},line:{color:'#5eead4',width:2},fill:'tozeroy',fillcolor:'#5eead40d'}
-],{...L,yaxis:{...L.yaxis,title:'Area (km\u00b2)',range:[37,41]},xaxis:{...L.xaxis,title:'Year'}},C);
-
-// Posterior histograms
-function postHist(id,key,label,color){
-  Plotly.newPlot(id,[{x:POST.map(d=>d[key]),type:'histogram',nbinsx:20,marker:{color:color+'88',line:{color:color,width:1}}}],{...L,xaxis:{...L.xaxis,title:label},yaxis:{...L.yaxis,title:'Count'},title:{text:label,font:{size:13,color:'#a0a4b8'}}},C);
 }
-postHist('chart-post-mf','MF','MF (mm/d/K)','#6c8cff');
-postHist('chart-post-pc','PC','precip_corr','#5eead4');
-postHist('chart-post-rs','RS','r_snow','#f59e0b');
-postHist('chart-post-mg','MG','MF_grad','#ef4444');
 
-// MF vs precip_corr scatter
-Plotly.newPlot('chart-post-scatter',[{x:POST.map(d=>d.MF),y:POST.map(d=>d.PC),mode:'markers',type:'scatter',marker:{color:POST.map(d=>d.RS),colorscale:'Viridis',size:6,showscale:true,colorbar:{title:'r_snow',titlefont:{size:11}}}}],{...L,xaxis:{...L.xaxis,title:'MF'},yaxis:{...L.yaxis,title:'precip_corr'},title:{text:'MF vs precip_corr (color = r_snow)',font:{size:13,color:'#a0a4b8'}}},C);
+// ── Navigation ──────────────────────────────────────────────────────
 
-},400);
+var views = ['architecture','data','decisions','equations','search'];
+var rendered = {};
 
-// MathJax
-setTimeout(()=>{if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise();},500);
+function switchView(name) {
+  views.forEach(function(vn) {
+    document.getElementById('view-'+vn).classList.remove('active');
+  });
+  document.getElementById('view-'+name).classList.add('active');
+  document.querySelectorAll('nav .tab').forEach(function(tab) {
+    tab.classList.toggle('active', tab.getAttribute('data-view') === name);
+  });
+  if (!rendered[name]) {
+    rendered[name] = true;
+    if (name === 'architecture') renderArchitecture();
+    else if (name === 'data') renderData();
+    else if (name === 'decisions') renderDecisions();
+    else if (name === 'equations') renderEquations();
+    else if (name === 'search') renderSearch();
+  }
+  if (name === 'data') setTimeout(renderCharts, 50);
+  closePanel();
+}
+
+document.querySelectorAll('nav .tab').forEach(function(tab) {
+  tab.addEventListener('click', function() { switchView(tab.getAttribute('data-view')); });
+});
+
+// Initialize
+rendered.architecture = true;
+renderArchitecture();
