@@ -43,9 +43,9 @@ STAKE_CHECK = ROOT / "validation_output" / "stake_predictive_check.csv"
 GEODETIC_VAL = ROOT / "validation_output" / "geodetic_subperiod_validation.csv"
 SENSITIVITY = ROOT / "validation_output" / "sensitivity_fixed_params.csv"
 
-PROJ_SSP126 = ROOT / "projection_output" / "PROJ-027_top1000_ssp126_2026-04-09" / "projection_ssp126_ensemble_2100.csv"
-PROJ_SSP245 = ROOT / "projection_output" / "PROJ-009_top250_ssp245_2026-03-23" / "projection_ssp245_ensemble_2100.csv"
-PROJ_SSP585 = ROOT / "projection_output" / "PROJ-011_top250_ssp585_2026-03-23" / "projection_ssp585_ensemble_2100.csv"
+PROJ_SSP126 = ROOT / "projection_output" / "PROJ-032_top250_ssp126_2026-04-09" / "projection_ssp126_ensemble_2100.csv"
+PROJ_SSP245 = ROOT / "projection_output" / "PROJ-033_top250_ssp245_2026-04-09" / "projection_ssp245_ensemble_2100.csv"
+PROJ_SSP585 = ROOT / "projection_output" / "PROJ-034_top250_ssp585_2026-04-09" / "projection_ssp585_ensemble_2100.csv"
 
 def _find_lapse_dir(lapse, ssp):
     """Find the most recent lapse sensitivity projection directory."""
@@ -536,13 +536,9 @@ def fig_07_projection_3ssp():
 
     fig, ax = plt.subplots(figsize=(12, 6.5))
 
-    # --- Historical period (2000-2025) from digitized outlines ---
-    outline_years = [2000, 2005, 2010, 2015, 2020, 2025]
-    outline_areas = [40.11, 40.11, 39.83, 39.26, 38.59, 38.34]
-    ax.plot(outline_years, outline_areas, "ko-", ms=7, lw=2.5, zorder=10,
-            label="Observed (digitized outlines)")
-
-    # --- Projections (2026-2100) ---
+    # --- Plot full model trajectory (2001-2100) for each SSP ---
+    # The ensemble CSVs now contain historical (2001-2025) + projection (2026-2100)
+    # The historical period is identical across SSPs (same observed climate)
     for ssp, fpath in ssp_files.items():
         if not fpath.exists():
             print(f"  WARNING: {fpath.name} not found, skipping {ssp}")
@@ -550,25 +546,24 @@ def fig_07_projection_3ssp():
         df = pd.read_csv(fpath)
         yr = df["year"]
 
-        # Connect historical to projection: start projection from last observed point
-        yr_full = pd.concat([pd.Series([2025]), yr], ignore_index=True)
-        p50_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p50"]], ignore_index=True)
-        p05_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p05"]], ignore_index=True)
-        p95_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p95"]], ignore_index=True)
-        p25_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p25"]], ignore_index=True)
-        p75_full = pd.concat([pd.Series([outline_areas[-1]]), df["area_km2_p75"]], ignore_index=True)
-
-        ax.plot(yr_full, p50_full, color=SSP_COLORS[ssp], lw=2,
+        ax.plot(yr, df["area_km2_p50"], color=SSP_COLORS[ssp], lw=2,
                 label=SSP_LABELS[ssp])
-        ax.fill_between(yr_full, p05_full, p95_full,
+        ax.fill_between(yr, df["area_km2_p05"], df["area_km2_p95"],
                         color=SSP_COLORS[ssp], alpha=0.15)
-        ax.fill_between(yr_full, p25_full, p75_full,
+        ax.fill_between(yr, df["area_km2_p25"], df["area_km2_p75"],
                         color=SSP_COLORS[ssp], alpha=0.25)
 
-    # Vertical line at projection start
+    # --- Observed outlines as validation points ---
+    outline_years = [2000, 2005, 2010, 2015, 2020, 2025]
+    outline_areas = [40.11, 40.11, 39.83, 39.26, 38.59, 38.34]
+    ax.plot(outline_years, outline_areas, "ko", ms=8, zorder=10,
+            label="Observed (digitized outlines)")
+
+    # Vertical line at GCM divergence point
     ax.axvline(2025, color="0.5", ls="--", lw=1, alpha=0.5)
-    ax.text(2024.5, ax.get_ylim()[1] * 0.98, "Projection\nstart",
-            ha="right", va="top", fontsize=9, color="0.5", style="italic")
+    ax.text(2025.5, ax.get_ylim()[1] * 0.98 if ax.get_ylim()[1] > 35 else 39,
+            "GCM scenarios\ndiverge",
+            ha="left", va="top", fontsize=9, color="0.5", style="italic")
 
     ax.set_xlabel("Year")
     ax.set_ylabel("Glacier area (km$^2$)")
