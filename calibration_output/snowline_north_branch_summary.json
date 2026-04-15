@@ -1,0 +1,12 @@
+{
+  "north_y_threshold": 6615000.0,
+  "north_x_threshold": 622000.0,
+  "n_years": 15,
+  "mean_bias_m": 25.888940144662758,
+  "std_bias_m": 84.46376916499194,
+  "rmse_m": 85.60815948222364,
+  "mae_m": 73.45423011031885,
+  "correlation": 0.1575562401434813,
+  "branch_n_cells": 628,
+  "branch_frac_of_glacier": 0.15656943405634505
+}

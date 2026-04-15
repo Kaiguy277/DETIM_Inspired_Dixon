@@ -237,8 +237,9 @@ def fig_10_outline_retreat():
         label = f"{yr}: {areas[yr]:.2f} km\u00b2"
         ax.plot([], [], color=color, lw=lw, ls=ls_style, label=label)
 
-    ax.legend(loc="upper left", fontsize=11, framealpha=0.9,
-              title="Digitized outlines", title_fontsize=12)
+    ax.legend(loc="upper right", fontsize=10, framealpha=0.95,
+              title="Digitized outlines", title_fontsize=11,
+              facecolor="white", edgecolor="0.3", bbox_to_anchor=(0.98, 0.98))
 
     # Scale bar — 2 km in degrees longitude
     mid_lat = (extent[2] + extent[3]) / 2
