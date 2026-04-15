@@ -1491,3 +1491,60 @@ preventing further data loss.
 - `calibration_output/area_filter_v13_scores.csv`
 - `calibration_output/calibration_summary_v13.json`
 - `calibration_output/calibration_v13_stdout.log`
+
+
+---
+
+## CAL-014 — Free Lapse Rate and Decoupled r_ice (D-034 + D-035)
+
+**Date queued:** 2026-04-14
+**Status:** Script ready; awaiting execution
+**Motivation:** Post-audit literature review (`litreview/literature_review_2026-04-14.md`)
+found our fixed lapse rate and fixed r_ice/r_snow ratio are not consensus
+choices in the glacier modeling literature. See D-034 (lapse rate) and
+D-035 (r_ice decoupling) for details.
+
+**Free parameters (8):** MF, MF_grad, r_snow, r_ice, precip_grad,
+precip_corr, T0, lapse_rate
+
+**Priors:**
+- MF: TN(5.0, 3.0) on [1, 12] — Braithwaite 2008
+- T0: TN(1.5, 0.5) on [0, 3]
+- lapse_rate: TN(-4.5e-3, 1.0e-3) on [-6.5e-3, -2.0e-3]  **(NEW)**
+- r_ice: TN(4.0e-3, 2.0e-3) on [0.02e-3, 10e-3]  **(NEW)**
+- MF_grad, r_snow, precip_grad, precip_corr: uniform within bounds
+
+**MCMC config:**
+- 5 DE seeds (multi-seed mode detection)
+- 32 walkers × 10,000 steps (4×ndim rule)
+- 2,000 step burn-in
+- Same snowline/geodetic/stake likelihood as CAL-013
+
+**Expected runtime:** ~30-35 hours (slightly longer than CAL-013 due to
+extra params and walkers)
+
+**Key expectations / falsification criteria:**
+- MF should decrease vs CAL-013's 7.30 if lapse rate compensation hypothesis
+  (Gardner & Sharp 2009) is correct — expect MF in 5-7 range
+- Lapse rate posterior should fall within literature range (-2 to -6.5)
+- r_ice / r_snow ratio posterior should NOT equal 2.0 (our old fixed value)
+  likely somewhere in 1.5-4 range
+- If DE multi-seed gives multiple modes → equifinality returned, need to
+  re-fix one parameter
+- Snowline RMSE should be similar or better than CAL-013 (90m)
+- Geodetic bias should be within Hugonnet uncertainty (±0.122 m w.e./yr)
+
+**Script:** `run_calibration_v14.py`
+**Output prefix:** all files get `_v14` suffix
+
+**Risk mitigation (vs CAL-009 equifinality failure):**
+- Informative priors on lapse_rate and r_ice (were uniform in CAL-009)
+- Snowlines in likelihood (added in CAL-013) provide spatial constraint
+- Area filter post-hoc (added in CAL-013) provides temporal constraint
+- 25 stake obs (CAL-009 had fewer)
+
+**Success criteria:**
+- Multi-seed DE converges to similar mode (cost within ~0.05)
+- MCMC acceptance 0.2-0.5
+- Posterior is unimodal
+- All targets within acceptable residuals (stakes, geodetic, snowline, area)

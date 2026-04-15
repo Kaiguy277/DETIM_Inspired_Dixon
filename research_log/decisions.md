@@ -1289,3 +1289,342 @@ capture.
   at Eklutna, noting snowline over-prediction at end of season
 - Hock (1999): DETIM distributes precipitation by elevation only;
   wind redistribution requires explicit parameterization
+
+---
+
+## D-032: IceBoost v2.0 Ice Thickness Cross-Check
+
+**Date:** 2026-04-13
+
+**Context:** The projection pipeline uses Farinotti et al. (2019) thickness
+(`data/ice_thickness/RGI60-01.18059_thickness.tif`, 25 m, EPSG:32605) for
+initial ice volume and Δh-parameterization retreat. Farinotti is a consensus
+of 5 models, ±30% typical error. Maffezzoli et al. (2025, GMD)'s IceBoost v2.0
+(XGBoost+CatBoost ensemble, GlaThiDa-trained) reports ~30% RMSE improvement
+over Farinotti globally. Zenodo deposit 17724512 publishes pre-computed
+per-glacier thickness rasters — downloaded RGI62_rgi1.zip (396 MB) and
+extracted `RGI60-01.18059.tif` (100 m, 5 bands: thickness, thickness_err,
+jensen_gap, h_wgs84, n_geoid) into `data/ice_thickness/iceboost/`.
+
+**Comparison (see `compare_iceboost_farinotti.py` and plots in
+`data/ice_thickness/iceboost/comparison/`):**
+
+| Metric              | Farinotti 2019 | IceBoost v2.0        |
+|---------------------|----------------|----------------------|
+| Resolution          | 25 m           | 100 m                |
+| Mean thickness      | 161 m          | 219 m                |
+| Max thickness       | 415 m          | 501 m                |
+| Glacier area        | 42.8 km²       | 39.9 km² (meta)      |
+| Ice volume          | 6.90 km³       | 9.07 ± 1.55 km³      |
+
+Pixel-wise (100 m common grid, n=4,281):
+- IceBoost − Farinotti: mean **+59 m**, median +51 m, RMS 94 m
+- Pearson r = 0.75
+- IceBoost volume is **+37% larger** than Farinotti on the common mask
+  (within IceBoost's reported ±17% error bar)
+
+**Elevation-banded bias (IceBoost thicker at every band, worst in upper glacier):**
+- 800–900 m: essentially equal (−2 m)
+- 1000–1100 m: +47 m
+- 1200–1300 m: **+125 m** (near ELA / accumulation zone, n=650)
+- 1300–1500 m: +83 to +108 m
+
+**Interpretation:**
+- Both products are modelled (no in-situ GPR at Dixon), so neither is ground
+  truth. The 37% divergence is consistent with Farinotti's own stated error.
+- The spatial pattern — agreement in the low ablation zone, large positive
+  IceBoost bias in the upper basin — matches published findings that
+  Farinotti under-estimates thickness in mass-balance-dominated accumulation
+  zones and over-estimates in steep margins.
+- **Implication for this thesis:** initial volume affects how long the
+  glacier survives under each SSP, not when meltwater peaks.
+  A +37% initial volume would push simulated disappearance dates later
+  by roughly +37% of the remaining lifetime (order: ~20-30 years for RCP 8.5,
+  ~100+ years for RCP 2.6). Peak meltwater timing is nearly unchanged.
+
+**Decision:** Keep Farinotti 2019 as the primary input for this thesis to
+preserve consistency with the calibrated Δh-parameterization and published
+Alaska volume budgets. Treat IceBoost as an independent upper-bound
+sensitivity check. Add one appendix-level projection run that initialises
+with IceBoost thickness (scaled 1.37× globally, or pixel-remapped) and
+report the divergence in disappearance date and cumulative runoff. This
+is a single additional calibration-independent run, not a recalibration.
+
+**Next steps:**
+- (deferred) Add a `--thickness-source iceboost` flag to `run_projection.py`
+  that swaps the thickness raster at initialisation.
+- (deferred) Report volume trajectory spread with both products in the
+  thesis appendix.
+
+**Files:**
+- `data/ice_thickness/iceboost/RGI60-01.18059.tif` (IceBoost raster)
+- `data/ice_thickness/iceboost/comparison/iceboost_vs_farinotti.png`
+- `compare_iceboost_farinotti.py`
+- Zenodo: https://doi.org/10.5281/zenodo.17724512
+- Paper: Maffezzoli et al., GMD 18, 2545 (2025)
+
+---
+
+## D-033: North-Branch-Only Snowline Comparison
+**Date:** 2026-04-14
+**Status:** Implemented (diagnostic; not in calibration likelihood)
+
+**Motivation:** Advisor meeting (Granola notes, ref [[1]](https://notes.granola.ai/d/d58629ca-f663-4cc6-af28-79711979b29f))
+flagged that whole-glacier snowline comparison is confounded by the high
+cross-glacier spatial variability DETIM cannot reproduce (D-028 structural
+finding: observed spatial std 24–69 m, modelled 6–22 m). Advisor suggested
+breaking the glacier into sub-branches (north / middle / south). As a first
+cut we compare only the NORTH BRANCH — the upper NE tributary — where the
+observed snowline is spatially more coherent.
+
+**Definition (revised 2026-04-15, 2D mask with X extended west to 621000):**
+- Dixon's aspect is NW; a Y-only cut bleeds into the central-upper glacier.
+  Revised mask uses BOTH a northing and easting threshold:
+  north branch = glacier cells with UTM 5N Y > 6615000 m AND X > 621000 m.
+- X threshold chosen after two iterations: initial X=622000 dropped the
+  ELA-entry zone (15.7% mask, r=0.16); extending west to X=621000 keeps
+  the NE tributary saddle while still excluding central-body snowlines
+  (which cluster near x ≈ 619000–620000).
+- Mask covers 898/4011 glacier cells (22.4 %) — essentially the
+  accumulation zone and ELA region of the NE tributary.
+- Both observed snowline rasterisation and modelled B=0 boundary cells
+  are filtered to this identical mask before computing mean elevation.
+
+**Results (revised 2D mask X=621000, MAP params, CAL-013, 100 m grid):**
+- n = 18 years with both obs and modelled boundary inside the mask.
+  Skipped: 2000, 2009, 2012, 2014 (no observed line in branch).
+- Mean bias: +17 m (modelled higher than observed)
+- RMSE: 85 m
+- MAE:  73 m
+- Correlation r = 0.51 — intermediate between the Y-only (0.70) and
+  tight-2D (0.16) sensitivity bounds. Informative: the diagnostic
+  depends on where you draw the box, which is itself a finding.
+- Temporal pattern preserved: pre-2017 mostly negative bias (−14 to −123 m);
+  2017-onwards strongly positive (+12 to +176 m). 2019–2024 all ≥ +71 m.
+
+**Mask-definition sensitivity (report alongside bias):**
+| Mask | % glacier | n | bias | RMSE | r |
+|------|-----------|---|------|------|---|
+| Y > 6615000 only             | 53.2 % | 19 | +17 m | 88 m | 0.70 |
+| Y > 6615000 AND X > 621000   | 22.4 % | 18 | +17 m | 85 m | 0.51 |
+| Y > 6615000 AND X > 622000   | 15.7 % | 15 | +26 m | 86 m | 0.16 |
+
+The bias is remarkably robust across the three masks (+17 to +26 m); RMSE
+is also stable (85–88 m). Correlation is sensitive to the mask because the
+elevation range of the observed line shrinks as the mask tightens.
+
+**Interpretation (revised):**
+- The restricted 2D mask isolates the NE tributary cleanly. Mean bias
+  (+26 m) and RMSE (86 m) remain on the order of whole-glacier figures,
+  so the branch split does not by itself reveal a radically different
+  error structure — the recent-warming positive-bias drift is the
+  dominant signal on this tributary as it is glacier-wide.
+- The r=0.16 correlation on the revised mask should not be over-interpreted:
+  obs elevations cluster in a narrow 1021–1185 m band on the tip (obs σ
+  across years ≈ 49 m), so even well-behaved model error (σ ≈ 84 m)
+  swamps interannual signal. The time-series plot and bias bar chart
+  are more informative than r for this mask.
+- Two years (2003, 2016) have obs line present in the mask but zero
+  modelled boundary cells — the modelled net balance is entirely positive
+  or entirely negative on the NE tributary at the observation date.
+  This is a qualitative disagreement worth flagging: the model puts the
+  snowline outside the NE-arm box on those dates while observations show
+  it crossing the box.
+
+**Scope:** Diagnostic only — NOT added to the calibration likelihood. The
+CAL-013 posterior already uses whole-glacier snowline in the likelihood
+(D-028). Adding the branch split would require rerunning the multi-objective
+calibration and is deferred pending discussion with the advisor.
+
+**Files:**
+- `run_snowline_north_branch.py` — standalone runner
+- `calibration_output/snowline_north_branch.csv` — per-year obs/mod/bias
+- `calibration_output/snowline_north_branch_summary.json` — aggregate stats
+- `calibration_output/snowline_north_branch_scatter.png`
+- `calibration_output/snowline_north_branch_timeseries.png`
+
+**Next steps:**
+- (deferred) Repeat for middle / south branches and compare bias patterns.
+- (deferred) Discuss with advisor whether to fold branch-resolved snowline
+  residuals into a reweighted likelihood for CAL-014.
+
+## D-034: Free Lapse Rate in Calibration (CAL-014)
+
+**Date:** 2026-04-14
+**Decision:** Stop fixing the lapse rate at -5.0 °C km⁻¹. Include it as a
+7th calibrated parameter in CAL-014, with truncated-normal prior
+N(μ=-4.5, σ=1.0) on bounds [-6.5, -2.0] °C km⁻¹.
+
+**Rationale:**
+
+Post-audit literature review (`litreview/literature_review_2026-04-14.md`,
+2026-04-14) found that our fixed value of -5.0 is NOT a consensus choice:
+
+- **Geck et al. (2021)** on Eklutna Glacier (our advisor's paper, verified
+  directly from local PDF p. 913): *"The temperature lapse rate among the
+  best parameter sets ranged from -0.6 to -0.2 °C (100 m)⁻¹ with a mean
+  of -0.3 °C (100 m)⁻¹ and a mode of -0.2 °C (100 m)⁻¹."*
+  That is -2 to -6 °C km⁻¹, mean -3, mode -2. Geck **calibrated** lapse
+  rate rather than fixing it, and got substantially shallower values than
+  our -5.0.
+- **Schuster, Rounce & Maussion (2023, Ann. Glaciol.,
+  DOI:10.1017/aog.2023.57)** verified from local PDF p. 295: constant
+  lapse rate reference is **-6.5 K km⁻¹** (OGGM default), with an
+  alternative of monthly-variable lapse rates derived from ERA5 pressure
+  levels. *"Neither their constant nor variable approach uses -5.0"*.
+- **Petersen, Beven, Klok, Haberkorn & Brock (2013, Ann. Glaciol.,
+  DOI:10.3189/2013aog63a477)** verified from PDF: calibrated a constant
+  lapse rate of -3.2 °C km⁻¹ on Haut Glacier d'Arolla — much shallower
+  than our -5.0.
+- **Gardner & Sharp (2009, Ann. Glaciol.,
+  DOI:10.3189/172756409787769663)** verified from PDF: showed that melt
+  factor (MF) silently compensates for lapse-rate bias — which is exactly
+  the symptom we observe (our calibrated MF=7.30 is at the high end of
+  Geck's mode 5.75-6.00).
+
+**Evidence of compensation in our CAL-013:**
+- MF posterior median 7.30 [7.06, 7.58] is high relative to literature
+  (Hock 2003 range 1.5-11.6, Braithwaite 2008 typical 3-7)
+- Geck (2021) mode MF = 5.75-6.00
+- Trüssel et al. (2015) Yakutat: MF calibrated much lower
+- The elevated MF suggests the fixed -5.0 lapse is too steep, producing
+  too-cold on-glacier temperatures that the optimizer compensates for
+  by inflating MF.
+
+**Prior choice rationale:**
+- Mean -4.5 °C km⁻¹: centered between Geck's mean (-3) and OGGM default (-6.5)
+- Sigma 1.0 °C km⁻¹: allows ±1σ of [-5.5, -3.5], covering literature range
+- Truncated at [-6.5, -2.0]: literature extremes
+
+**Why NOT follow Geck exactly and use -3.0 fixed:**
+- Dixon is not Eklutna — different hypsometry, precipitation regime
+- Different data constrains different values
+- Better to let the data speak via calibration than hard-code a value
+  from a neighboring (but different) glacier
+
+**Alternatives considered:**
+- Fix at -5.0 (current approach): rejected — not defensible after lit review
+- Fix at -3.0 (Geck's mean): rejected — site-specific, shouldn't be
+  assumed to transfer
+- Monthly variable from ERA5 (Schuster 2023 option): deferred — requires
+  ERA5 download and significant refactor; free-scalar is a reasonable
+  first step
+- Follow Gardner & Sharp (2009) "seasonal" rates: deferred — requires
+  sub-annual stake data we don't have
+
+**Implementation:**
+- Add `lapse_rate` to `PARAM_NAMES` in `run_calibration_v14.py`
+- Bounds: [-6.5e-3, -2.0e-3] (°C/m internally)
+- Prior: truncated normal mean -4.5e-3, sigma 1.0e-3
+- Remove `FIXED_LAPSE_RATE` constant; add as calibrated
+
+**Risk (equifinality):**
+- CAL-009 with free lapse went to -6.83 (extreme) with precip_corr=1.20
+  (low), both at/near bounds — physically unrealistic
+- CAL-014 mitigations:
+  1. Tighter lapse bounds [-6.5, -2.0] (was [-7.0, -3.0])
+  2. Informative truncated-normal prior (was uniform)
+  3. Multi-seed DE (5 seeds) to detect multimodality
+  4. 25 stake obs + geodetic + snowlines in likelihood (we had fewer
+     constraints in CAL-009)
+  5. Post-hoc area filter
+
+**Literature References (verified, in `papers_verified/`):**
+- Geck et al. (2021) J. Glaciol. — Geck_2021_Eklutna.pdf, p. 913
+- Schuster et al. (2023) Ann. Glaciol. — Schuster_2023_TI_calibration.pdf, p. 295
+- Petersen et al. (2013) Ann. Glaciol. — Petersen_2013_constant_lapse.pdf
+- Gardner & Sharp (2009) Ann. Glaciol. — Gardner_Sharp_2009_sensitivity.pdf
+- Trüssel et al. (2015) J. Glaciol. — Trussel_2015_Yakutat.pdf
+
+
+## D-035: Decouple r_ice from r_snow in Calibration (CAL-014)
+
+**Date:** 2026-04-14
+**Decision:** Stop deriving r_ice = 2.0 × r_snow. Calibrate r_ice as an
+independent 8th parameter with truncated-normal prior N(μ=0.004, σ=0.002)
+on bounds [0.02e-3, 10.0e-3] mm m² W⁻¹ d⁻¹ K⁻¹.
+
+**Rationale:**
+
+Post-audit literature review revealed our fixed ratio of 2.0 is NOT the
+consensus:
+
+- **Geck et al. (2021)** verified from PDF (p. 914, Fig. 6 caption):
+  r_ice = 0.0414 and r_snow = 0.0098, giving ratio = **4.22**. Geck
+  calibrated both independently. Our claimed "ratio of 2.0 follows Geck's
+  approach" was incorrect — Geck does not use a fixed ratio.
+- **Trüssel et al. (2015)** verified from PDF: calibrated both r_ice
+  and r_snow independently; reported ratio ~1.83 for Yakutat Glacier.
+- **Huss & Hock (2015)** verified from PDF Section 3.1.2: uses
+  classical degree-day model with separate f_snow and f_ice factors,
+  NOT a radiation-index model. Our earlier claim that they fix ratio
+  at 2.0 was wrong.
+- **Sjursen et al. (2023) J. Glaciol., DOI:10.1017/jog.2023.62**:
+  Bayesian parameter estimation treats MF_snow and MF_ice as
+  independent parameters.
+
+**Physics rationale:**
+- Snow albedo ~0.7 (fresh) to ~0.5 (aged)
+- Ice albedo ~0.3 (clean) to ~0.1 (debris-covered)
+- The ratio of absorbed shortwave radiation is 2-7× higher for ice
+- Fixing ratio at 2.0 is too conservative — likely underestimates
+  albedo feedback
+- Under warming, exposed ice fraction grows → ratio matters more for
+  projections than for current-climate fit (which stays dominantly
+  snow-covered)
+
+**Albedo feedback argument (critical for projections):**
+- The ONLY part of the model that differentiates snow from ice melt is
+  this ratio. If ratio is fixed artificially low, the albedo feedback
+  (exposed ice melts faster as firn retreats) is dampened.
+- Projections under warming increasingly depend on bare-ice physics
+- Sjursen (2023) showed that separate calibration of snow and ice DDFs
+  matters for uncertainty envelope of projections
+
+**Prior choice rationale:**
+- Mean 0.004 mm m² W⁻¹ d⁻¹ K⁻¹: approximately 2× our current r_snow
+  MAP, matching current default but allowing flexibility
+- Sigma 0.002: permits ratio range ~1.5-4 based on r_snow posterior
+- Upper bound 10e-3: Geck's upper bound (0.0414 in his units) converted
+
+**Unit conversion check (user should verify with advisor):**
+Our units: mm m² W⁻¹ d⁻¹ K⁻¹
+Geck's units: m² mm d⁻¹ °C⁻¹
+These should be equivalent (W⁻¹ d⁻¹ vs d⁻¹ with implicit W/m² = 1)
+but dimensional analysis should be confirmed before committing posterior
+to projection runs.
+
+**Alternatives considered:**
+- Keep ratio fixed at 2.0 (current): rejected after lit review — not
+  supported by closest analog (Geck Eklutna)
+- Fix ratio at Geck's 4.22: rejected — site-specific, shouldn't transfer
+- Use separate degree-day factors (MF_snow, MF_ice) without radiation:
+  rejected — DETIM Method 2 with radiation is our chosen framework
+
+**Risk (equifinality):**
+- r_snow, r_ice, MF all influence summer melt → potential 3-way trade-off
+- Mitigations:
+  1. Informative priors on all three (from Hock 1999 literature ranges)
+  2. Snowlines in likelihood provide spatial constraint on snow vs ice
+     melt distinction (snowline elevation depends on ratio)
+  3. Multi-seed DE for mode detection
+
+**Implementation:**
+- Add `r_ice` to `PARAM_NAMES` in `run_calibration_v14.py`
+- Bounds: [0.02e-3, 10.0e-3]
+- Prior: truncated normal mean 4.0e-3, sigma 2.0e-3
+- Remove `FIXED_RICE_RATIO` constant; r_ice no longer derived
+
+**Literature References (verified, in `papers_verified/`):**
+- Geck et al. (2021) J. Glaciol. — Geck_2021_Eklutna.pdf, p. 914 Fig. 6
+- Trüssel et al. (2015) J. Glaciol. — Trussel_2015_Yakutat.pdf
+- Huss & Hock (2015) Front. Earth Sci. — huss_hock_2015.pdf, §3.1.2
+- Sjursen et al. (2023) J. Glaciol. — Sjursen_2023_Bayesian_mass_balance.pdf
+
+**Next steps:**
+- Implement `run_calibration_v14.py` with both D-034 and D-035 changes
+- 8 free parameters total (was 6)
+- Same DE + MCMC structure as CAL-013 (emcee, 5 seeds, multi-objective)
+- Expected runtime: ~30-35 hours (slightly longer than CAL-013 due to
+  extra params)
+- Register as CAL-014 in `calibration_runs.md`
