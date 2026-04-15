@@ -1529,12 +1529,39 @@ Post-audit literature review (`litreview/literature_review_2026-04-14.md`,
      constraints in CAL-009)
   5. Post-hoc area filter
 
-**Literature References (verified, in `papers_verified/`):**
-- Geck et al. (2021) J. Glaciol. — Geck_2021_Eklutna.pdf, p. 913
-- Schuster et al. (2023) Ann. Glaciol. — Schuster_2023_TI_calibration.pdf, p. 295
-- Petersen et al. (2013) Ann. Glaciol. — Petersen_2013_constant_lapse.pdf
-- Gardner & Sharp (2009) Ann. Glaciol. — Gardner_Sharp_2009_sensitivity.pdf
-- Trüssel et al. (2015) J. Glaciol. — Trussel_2015_Yakutat.pdf
+**Literature References (directly quoted from verified PDFs in `papers_verified/`):**
+
+- **Geck et al. (2021)** J. Glaciol. — Geck_2021_Eklutna.pdf, p. 913:
+  *"The temperature lapse rate among the best parameter sets ranged from
+  -0.6 to -0.2 °C (100 m)⁻¹ with a mean of -0.3 °C (100 m)⁻¹ and a mode of
+  -0.2 °C (100 m)⁻¹."*
+  → -2 to -6 °C/km, mean -3, mode -2. Eklutna was CALIBRATED, not fixed.
+
+- **Gardner et al. (2009)** J. Climate — Gardner_2009_Arctic_lapse_JClimate.pdf,
+  p. 4288 (§4b):
+  *"All other mean summer and winter lapse rates lay within the ranges
+  4.9° ± 0.4°C km⁻¹ and 3.2° ± 0.5°C km⁻¹, respectively."*
+  → Canadian Arctic glaciers. Summer (ablation) -4.9; winter -3.2; annual ~-4.
+  Paper argues for VARIABLE rather than fixed rates (Abstract, p. 4281).
+
+- **Schuster et al. (2023)** Ann. Glaciol. — Schuster_2023_TI_calibration.pdf,
+  p. 295: OGGM reference constant value is -6.5 K/km (MALR); alternative is
+  monthly variable from ERA5.
+
+- **Petersen et al. (2013)** Ann. Glaciol. — Petersen_2013_constant_lapse.pdf:
+  calibrated -3.2 °C/km on Haut Glacier d'Arolla.
+
+- **Gardner & Sharp (2009)** Ann. Glaciol. (DOI:10.3189/172756409787769663)
+  — Gardner_Sharp_2009_sensitivity.pdf: shows MF silently compensates for
+  lapse rate bias in degree-day modeling.
+
+- **Trüssel et al. (2015)** J. Glaciol. — Trussel_2015_Yakutat.pdf: Yakutat
+  Glacier DETIM application, Alaska maritime.
+
+**Prior choice (N(-4.5e-3, 1.0e-3)) spans:**
+- Midway between Geck's annual mean (-3) and Gardner's summer (-5)
+- Consistent with Gardner's implied annual mean (~-4 °C/km)
+- Bounds [-6.5, -2.0] capture full literature range (OGGM MALR to Geck mode)
 
 
 ## D-035: Decouple r_ice from r_snow in Calibration (CAL-014)
@@ -1615,11 +1642,53 @@ to projection runs.
 - Prior: truncated normal mean 4.0e-3, sigma 2.0e-3
 - Remove `FIXED_RICE_RATIO` constant; r_ice no longer derived
 
-**Literature References (verified, in `papers_verified/`):**
-- Geck et al. (2021) J. Glaciol. — Geck_2021_Eklutna.pdf, p. 914 Fig. 6
-- Trüssel et al. (2015) J. Glaciol. — Trussel_2015_Yakutat.pdf
-- Huss & Hock (2015) Front. Earth Sci. — huss_hock_2015.pdf, §3.1.2
-- Sjursen et al. (2023) J. Glaciol. — Sjursen_2023_Bayesian_mass_balance.pdf
+**Literature References (directly quoted from verified PDFs in `papers_verified/`):**
+
+- **Geck et al. (2021)** J. Glaciol. — Geck_2021_Eklutna.pdf, p. 914
+  (Fig. 6 caption): *"γ = −0.2°C (100 m)⁻¹, fm = 5.5 mm °C⁻¹ d⁻¹,
+  **r_ice = 0.0414**, **r_snow = 0.0098** m² mm d⁻¹ °C⁻¹, pcor = 15%
+  and pgrad = 25% (100 m)⁻¹"*
+  → Geck's best-fit r_ice/r_snow = 0.0414/0.0098 = **4.22**. He
+  calibrated both parameters independently.
+
+- **Hock (1999)** J. Glaciol. — Hock_1999_DETIM.pdf, p. 106 Table 1:
+  Storglaciären best-fit values:
+  - Model 2: r_ice = 0.8×10⁻³, r_snow = 0.6×10⁻³ → ratio = **1.33**
+  - Model 3: r_ice = 1.0×10⁻³, r_snow = 0.7×10⁻³ → ratio = **1.43**
+  → **Hock's actual calibrated values give ratio ~1.4, NOT 2.0.**
+  → Previously-claimed "Hock Table 4 range 1.5-3.0" was fabricated.
+  → Table 3 DDF (not radiation factor) values: *"tend to vary from
+  2 to 7 mm d⁻¹ °C⁻¹ over snow and 5 to 11 mm d⁻¹ °C⁻¹ over ice
+  surfaces"* → DDF ratio 1.5-2.5, still not 3.0.
+
+- **Rounce et al. (2020)** PyGEM J. Glaciol. — Rounce_2020_PyGEM.pdf,
+  p. 176: *"the degree-day factor of snow is assumed to be **70% of
+  the degree-day factor of ice**"*
+  → f_ice/f_snow = 1/0.7 = **1.43**, NOT 2.0. PyGEM fixes this ratio
+  but at 1.43, not 2.0.
+
+- **Trüssel et al. (2015)** J. Glaciol. — Trussel_2015_Yakutat.pdf:
+  calibrated r_ice and r_snow independently; reported ratio ~1.83
+  for Yakutat Glacier.
+
+- **Huss & Hock (2015)** Front. Earth Sci. — huss_hock_2015.pdf, §3.1.2:
+  uses classical degree-day model with separate f_snow and f_ice
+  factors (NOT a radiation-index model — ratio claim does not apply).
+
+- **Sjursen et al. (2023)** J. Glaciol. — Sjursen_2023_Bayesian_mass_balance.pdf:
+  Bayesian calibration with independent MF_snow and MF_ice.
+
+**CORRECTED understanding of literature ratios:**
+Previously claimed *"Hock Table 4 range 1.5-3.0, our 2.0 is mid-range"*
+was not supported by Hock 1999 itself. Actual values:
+- Hock (1999) Storglaciären: 1.33-1.43 (from Table 1, Models 2-3)
+- Rounce (2020) PyGEM: 1.43 (fixed assumption)
+- Geck (2021) Eklutna: 4.22 (calibrated)
+- Trüssel (2015) Yakutat: ~1.83 (calibrated)
+
+Our chosen prior TN(4.0e-3, 2.0e-3) centered at ratio ~2-3 given
+typical r_snow ~1-2e-3. This encompasses both Hock/Rounce (~1.4) and
+Geck (~4.2) endpoints.
 
 **Next steps:**
 - Implement `run_calibration_v14.py` with both D-034 and D-035 changes
