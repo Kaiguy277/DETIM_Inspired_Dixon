@@ -445,10 +445,17 @@ def build_calibration_targets(stakes, geodetic, climate, grid, snowline_dir):
     print(f"  Geodetic periods: {len(targets['geodetic'])}")
     for g in targets['geodetic']:
         print(f"    {g['period']}: {len(g['year_data'])} usable years")
-    print(f"  Snowline years: {len(targets['snowline'])}")
-    for s in targets['snowline']:
-        print(f"    {s['year']} ({s['year']}-{s['month']:02d}-{s['day']:02d}): "
-              f"obs={s['obs_mean_elev']:.0f}m +/- {s['obs_std_elev']:.0f}m")
+    # Branch-resolved snowline targets (CAL-014 D-036)
+    from collections import Counter
+    by_branch = Counter(t.get('branch', 'whole') for t in targets['snowline'])
+    print(f"  Snowline residuals: {len(targets['snowline'])} "
+          f"({dict(by_branch)})")
+    for s in targets['snowline'][:12]:  # show first 12 for brevity
+        print(f"    {s['year']}-{s['month']:02d}-{s['day']:02d} "
+              f"[{s.get('branch', 'whole')}]: "
+              f"obs={s['obs_mean_elev']:.0f}m, n_cells={s.get('n_obs_cells', '?')}")
+    if len(targets['snowline']) > 12:
+        print(f"    ... and {len(targets['snowline']) - 12} more")
     return targets
 
 
@@ -694,7 +701,8 @@ def main(resume=False):
     # -- JIT warm-up -----------------------------------------------------
     print("\nJIT compilation warm-up...")
     t0 = time.time()
-    test_x = np.array([5.0, -0.003, 0.3e-3, 0.001, 2.0, 1.5])
+    # 7 params: MF, MF_grad, r_snow, precip_grad, precip_corr, T0, lapse_rate
+    test_x = np.array([5.0, -0.003, 0.3e-3, 0.001, 2.0, 1.5, -5.0e-3])
     _ = compute_objective(test_x, fmodel, targets)
     print(f"  Done in {time.time()-t0:.1f}s")
 
