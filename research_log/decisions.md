@@ -1413,6 +1413,54 @@ The bias is remarkably robust across the three masks (+17 to +26 m); RMSE
 is also stable (85–88 m). Correlation is sensitive to the mask because the
 elevation range of the observed line shrinks as the mask tightens.
 
+---
+
+### Rev.3 — 2026-04-15: Manually-digitized branch polygons
+
+Bounding-box masks abandoned in favour of manually-digitized branch polygons
+(Dixon's NW aspect makes orthogonal cuts awkward). Polygons at
+`data/glacier_outlines/branches/dixon_{north,middle,south}_branch.shp`;
+middle built as `glacier − (north ∪ south)` to guarantee non-overlap.
+
+Runner: `run_snowline_branches.py` (supersedes `run_snowline_north_branch.py`).
+Snowlines are effectively split at branch boundaries via raster intersection —
+each line pixel is attributed to exactly one branch by `(line_raster & branch_mask)`.
+
+**Per-branch areas (total 40.11 km², union = RGI7 outline):**
+- North:  11.38 km² (28.4 %)
+- Middle:  8.52 km² (21.2 %)
+- South:  20.21 km² (50.4 %)
+
+**Results (MAP params CAL-013, 100 m grid):**
+| Branch | n | bias | RMSE | MAE | r |
+|--------|---|------|------|-----|---|
+| North  | 16 | +19.3 m | 86.6 m | 73.3 m | 0.57 |
+| Middle |  5 | −65.3 m |123.8 m | 91.2 m | 0.41 |
+| South  | 22 | +37.5 m | 91.6 m | 71.4 m | 0.80 |
+
+**Findings:**
+- South branch has every year represented (observed lines always draw through
+  it) and the strongest interannual signal (r=0.80). This is now the cleanest
+  test of the model's snowline reproduction.
+- North branch: r=0.57, intermediate dynamic range. Bias +19 m, RMSE 87 m —
+  consistent with the bounding-box rev.2 result (+17 m / 85 m), confirming
+  the bounding-box was a reasonable approximation of the hand-digitized branch.
+- Middle branch: only 5 years have a digitized line passing through it — the
+  digitizer usually didn't draw through the middle cirque. The −65 m mean bias
+  and 124 m RMSE are dominated by 2000 (−254 m) and 2012 (−67 m). Too few
+  points for a robust summary; flag as a digitization-coverage issue rather
+  than a model finding.
+- 2020 gives near-identical bias on north (+178) and south (+177) — the
+  warm-year over-prediction is glacier-wide, not branch-specific.
+
+**Files:**
+- `run_snowline_branches.py` — main analysis
+- `data/glacier_outlines/branches/*.shp` — the three digitized polygons
+- `calibration_output/snowline_branches.csv` — 66 rows (22 yr × 3 branches)
+- `calibration_output/snowline_branches_summary.json`
+- `calibration_output/snowline_branches_{scatter,timeseries,bias}.png`
+- `_workbench_snowline_north/` — interactive workbench (3-branch view)
+
 **Interpretation (revised):**
 - The restricted 2D mask isolates the NE tributary cleanly. Mean bias
   (+26 m) and RMSE (86 m) remain on the order of whole-glacier figures,
@@ -1697,3 +1745,116 @@ Geck (~4.2) endpoints.
 - Expected runtime: ~30-35 hours (slightly longer than CAL-013 due to
   extra params)
 - Register as CAL-014 in `calibration_runs.md`
+
+
+## D-036: Branch-Resolved Snowline Likelihood (CAL-014)
+
+**Date:** 2026-04-14
+**Decision:** Replace whole-glacier snowline likelihood term with per-branch
+(north / middle / south) residuals using manually-digitized branch
+polygons. Also revised per-parameter Options B after literature prior
+validation:
+
+1. **Keep r_ice/r_snow RATIO fixed** (at 2.5, up from 2.0) rather than
+   freeing it (supersedes earlier D-035 which freed it).
+2. **Tighten lapse_rate prior σ from 1.0e-3 to 0.6e-3** (D-034 revised).
+3. **Raise σ_snowline from 75m to 90m** (match measured structural RMSE
+   from CAL-013).
+4. **Branch-resolved snowline likelihood**: ~43 residuals across 3
+   branches vs 22 whole-glacier.
+
+**Motivation:**
+
+Second-round literature review (`litreview/cal014_prior_validation_2026-04-14.md`)
+identified three serious issues with the originally-proposed 8-parameter
+CAL-014:
+
+a) **r_ice upper bound excluded Geck's range.** Geck 2021 best-fit
+   r_ice = 0.0414 in same units as ours. Our proposed upper bound of
+   10e-3 would have capped r_ice at 24% of Geck's best value. Either
+   raise bounds or (preferred) use fixed ratio.
+
+b) **Over-parameterization risk.** Only Geck 2021 among verified
+   maritime Alaska precedents frees both lapse AND r_ice, and Geck
+   explicitly acknowledges *"the model is overparameterized, it is not
+   possible to determine a single best model run"* (p. 913). McNeil
+   2020 (Taku/Lemon Creek, Juneau Icefield), Ziemen 2016 (Juneau),
+   and O'Neel 2019 (Wolverine) all FIX the lapse rate. Rounce 2020
+   PyGEM, Sjursen 2023, Huss & Hock 2015 all FIX the r_ice/r_snow
+   ratio and calibrate only r_snow.
+
+c) **Lapse σ=1.0e-3 on bounds [-6.5, -2.0] was too loose.** Sjursen
+   2023 (p. 833, verified quote): *"precarious due to compensating
+   effects between Tcorr and [MF]"*. With σ=1.0, the prior has
+   meaningful mass across nearly the full bound range, reopening the
+   equifinality loop CAL-013 closed.
+
+**Resolution (Option B from lit review):**
+
+7 free parameters (MF, MF_grad, r_snow, precip_grad, precip_corr, T0,
+lapse_rate). r_ice derived as 2.5 × r_snow (fixed ratio). This:
+- Tests the lapse hypothesis (is our CAL-013 MF=7.30 a compensation?)
+- Avoids Geck's acknowledged over-param
+- Uses mid-range literature ratio (between PyGEM 1.43 and Geck 4.22)
+
+**Branch-resolved snowline implementation:**
+
+Per-branch snowline analysis already performed in D-033 using manually-
+digitized polygons in `data/glacier_outlines/branches/`:
+- North branch (11.4 km²): 16 years, bias +19m, RMSE 87m, r=0.57
+- Middle branch (8.5 km²): 5 years, bias −65m, RMSE 124m, r=0.41
+- South branch (20.2 km²): 22 years, bias +38m, RMSE 92m, r=0.80
+
+Adding these as branch-specific likelihood terms:
+- Increases snowline constraints from 22 → 43 residuals
+- Captures spatial variability (addresses ELA bias from D-031)
+- Uses σ_snowline = 90m uniformly (all branches have similar RMSE)
+
+**Alternatives considered:**
+
+- Option A (6 params, fix lapse at -5.0): rejected — lapse hypothesis
+  worth testing; the prior validation showed -5.0 wasn't consensus anyway
+- Option C (8 params, free both lapse and r_ice): rejected — repeats
+  Geck's overparameterization warning
+- Branch-specific σ_snowline: deferred — branches have similar RMSEs
+  (87-124m), uniform 90m is good enough
+
+**Risk mitigations:**
+
+1. Multi-seed DE (5 seeds) for mode detection
+2. Posterior correlation matrix diagnostics
+3. Prior-vs-posterior width check per parameter (Sjursen 2023 line 452:
+   if posterior σ ≈ prior σ, parameter is unidentified → drop it)
+4. Gelman-Rubin R̂ across chains; require < 1.1
+5. Fall-back plan: if lapse_rate posterior is indistinguishable from
+   prior, fix it at CAL-013 value and rerun as 6-param CAL-014a
+
+**Literature References (directly quoted from verified PDFs):**
+
+- Sjursen et al. (2023) J. Glaciol. — Sjursen_2023_Bayesian_mass_balance.pdf,
+  p. 833: *"precarious due to compensating effects between Tcorr and
+  [MF]"*; p. 775: *"Increasing the number of unknown parameters... makes
+  equifinality worse"*.
+- Geck et al. (2021) J. Glaciol. — Geck_2021_Eklutna.pdf, p. 913:
+  acknowledges overparameterization *"it is not possible to determine
+  a single best model run"*.
+- McNeil et al. (2020) J. Glaciol. — McNeil_2020_Taku_LemonCreek.pdf:
+  fixes lapse at -5.0 for Taku/Lemon Creek (Juneau Icefield).
+- Rounce et al. (2020) PyGEM — Rounce_2020_PyGEM.pdf, p. 176:
+  *"the degree-day factor of snow is assumed to be 70% of the degree-
+  day factor of ice"* (fixed ratio 1.43).
+- Racoviteanu et al. (2019) — Racoviteanu_2019_automated_snowline.pdf:
+  snowline altitude uncertainties of ±70m per observation.
+
+**Implementation:**
+
+- `run_calibration_v14.py` — updated for 7 params, ratio 2.5, branch-resolved snowlines
+- `RICE_RATIO = 2.5` constant (replaces the old FIXED_RICE_RATIO=2.0)
+- `SIGMA_SNOWLINE = 90.0` (up from 75.0)
+- New `_load_branch_masks()` function reads branch polygons
+- `build_snowline_targets()` now produces branch-resolved targets
+- `compute_chi2_terms()` loops over (year, branch) pairs, running model
+  once per year (efficient) and extracting per-branch modeled snowlines
+- Expected MCMC runtime: ~25-28 hours (7 params × 32 walkers × 10,000
+  steps × 5 seeds; slightly longer than CAL-013 due to more snowline
+  terms but fewer params than originally-proposed 8-param CAL-014)

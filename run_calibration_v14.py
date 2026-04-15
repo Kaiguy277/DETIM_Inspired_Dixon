@@ -1,42 +1,51 @@
 """
-Bayesian ensemble calibration of Dixon Glacier DETIM — v14 (CAL-014, D-034+D-035).
+Bayesian ensemble calibration of Dixon Glacier DETIM — v14 (CAL-014 Option B).
 
-Multi-objective calibration with snowline elevation in the MCMC likelihood
-(inherited from CAL-013), PLUS two new parameters freed based on
-literature review (2026-04-14):
-  - lapse_rate: was fixed at -5.0 °C km⁻¹, now calibrated (D-034)
-  - r_ice: was derived as 2×r_snow, now independent (D-035)
+Based on two rounds of literature review (litreview/literature_review_*.md
+and litreview/cal014_prior_validation_*.md), this revision keeps r_ice
+TIED to r_snow (no new free parameter for it) but frees lapse_rate and
+adds branch-resolved snowline residuals.
 
 Changes from CAL-013 (v13):
-  + 2 new free parameters → 8 total (was 6)
-  + Updated priors for lapse_rate and r_ice (see log_prior docstring)
-  + Increased MCMC walkers 24→32 (4×ndim rule)
-  + Multi-seed DE retains 5 seeds for mode detection
+  + lapse_rate now CALIBRATED (D-034) with tightened prior
+    TN(-4.5e-3, 0.6e-3) on [-6.5e-3, -2.0e-3]
+  + r_ice/r_snow ratio changed from 2.0 → 2.5 (D-035 revised)
+    Literature mid-range of Hock 1.4, PyGEM 1.43, Trüssel 1.83, Geck 4.2
+  + Snowline likelihood now BRANCH-RESOLVED (D-036): 43 residuals
+    (16 north + 5 middle + 22 south) vs 22 whole-glacier in CAL-013
+  + σ_snowline raised 75m → 90m to match measured structural RMSE
+  + MCMC walkers 24 → 32 (4×ndim for 7-8 params)
 
-Motivation (see research_log/decisions.md):
-  D-034: Geck 2021 calibrated lapse at -2 to -6 °C/km (mean -3); our
-         fixed -5.0 was at the steep end, likely causing MF compensation
-         (our CAL-013 MF=7.30 is high relative to Geck mode 5.75-6.00)
-  D-035: Geck calibrated r_ice/r_snow = 4.22 independently; fixing at 2.0
-         was inconsistent with the closest analog study. Independent
-         calibration preserves the albedo feedback for projections.
+Free parameters (7): MF, MF_grad, r_snow, precip_grad, precip_corr,
+                    T0, lapse_rate.
+Derived: r_ice = 2.5 × r_snow.
+
+Why 7 params (not 8):
+Option A (conservative) and Option B (moderate) from the prior validation
+review. Option B chosen: keeps lapse free (tests hypothesis that CAL-013's
+high MF compensates for too-steep fixed lapse), but keeps the ratio fixed
+to avoid repeating Geck's acknowledged over-parameterization on Eklutna.
 
 Approach (unchanged from CAL-013):
-  Phase 1: Multi-seed DE (with snowline in objective)
+  Phase 1: Multi-seed DE (5 seeds, snowlines in objective)
   Phase 1.5: Cluster DE optima
-  Phase 2: MCMC from each mode (with snowline in likelihood)
-  Phase 3: Combine posteriors + snowline validation summary
-  Phase 4: Post-hoc area evolution behavioral filter on top N posterior samples
+  Phase 2: MCMC from each mode
+  Phase 3: Combine posteriors + branch-resolved snowline summary
+  Phase 4: Post-hoc area evolution filter
 
-Literature References (all verified in papers_verified/):
-    Geck et al. (2021) J. Glaciol. — Eklutna precedent
-    Schuster et al. (2023) Ann. Glaciol. — TI equifinality
-    Petersen et al. (2013) Ann. Glaciol. — constant lapse suitability
-    Gardner & Sharp (2009) Ann. Glaciol. — MF/lapse compensation
-    Trüssel et al. (2015) J. Glaciol. — Yakutat DETIM
-    Sjursen et al. (2023) J. Glaciol. — Bayesian ensemble
-    Gabbi et al. (2012) HESS — multi-criteria behavioral filtering
-    Rabatel et al. (2005) J. Glaciol. — snowline altitude uncertainties
+Literature (all verified in papers_verified/, 32 PDFs):
+    Geck 2021 — Eklutna closest analog
+    Schuster 2023 — TI equifinality
+    Petersen 2013 — constant lapse justification
+    Gardner & Sharp 2009 — MF/lapse compensation
+    Gardner et al. 2009 J. Climate — Arctic lapse values
+    Trüssel 2015 — Yakutat DETIM
+    Sjursen 2023 — Bayesian MB (warned against over-param)
+    Rounce 2020 PyGEM — global modeling, fixes ratio at 1.43
+    Hock 1999 — DETIM method; ratio 1.33-1.43 for Storglaciären
+    McNeil 2020 — Juneau Icefield, fixes lapse at -5.0
+    Rabatel 2005 — snowline altitude uncertainties
+    Gabbi 2012 — multi-criteria filtering
 """
 import sys
 import os
@@ -89,40 +98,53 @@ MCMC_NSTEPS = 10000      # per walker per chain
 MCMC_BURNIN = 2000       # minimum burn-in
 MCMC_INIT_SPREAD = 1e-3  # relative spread for walker initialization
 
-# -- Fixed parameters (CAL-014 — only k_wind remains fixed) ---------------
+# -- Fixed parameters (CAL-014 Option B — 7 free params) -----------------
 # D-034 (2026-04-14): Lapse rate freed based on lit review
-# D-035 (2026-04-14): r_ice freed based on lit review
+# D-035 (2026-04-14): Revised to fixed ratio r_ice = RICE_RATIO * r_snow
+#                     (ratio 2.5 = mid-range of Hock 1.4, PyGEM 1.43, Geck 4.2)
+# Lit review 2026-04-14 (cal014_prior_validation): over-parameterization
+# risk too high with r_ice freely calibrated. Keep ratio fixed at 2.5.
 FIXED_K_WIND = 0.0
+RICE_RATIO = 2.5            # D-035 revised: r_ice = 2.5 * r_snow
 
 # Geodetic hard constraint penalty (D-014)
 GEODETIC_LAMBDA = 50.0
 
-# -- Snowline uncertainty (D-028) ----------------------------------------
-# Combined uncertainty from: observed spatial spread (~50-80m),
-# model grid resolution (100m), temporal mismatch.
-# Consistent with Rabatel et al. (2005): 50-100m for satellite snowlines.
-SIGMA_SNOWLINE = 75.0  # m
+# -- Snowline uncertainty (D-028 → D-036) -------------------------------
+# Raised from 75m to 90m per lit review 2026-04-14:
+# structural RMSE in CAL-013 was 90m, so 75m over-weights snowlines.
+SIGMA_SNOWLINE = 90.0  # m
 
 # -- Post-MCMC area filter (D-028) --------------------------------------
 AREA_FILTER_N_TOP = 1000    # draw top N from posterior for area screening
 AREA_RMSE_MAX = 1.0         # km²
 
-# -- Parameters and bounds (8 free — CAL-014) ----------------------------
-# Added parameters vs CAL-013:
-#  - lapse_rate (D-034): truncated-normal prior N(-4.5e-3, 1.0e-3)
-#  - r_ice (D-035): truncated-normal prior N(4.0e-3, 2.0e-3), decoupled from r_snow
-PARAM_NAMES = ['MF', 'MF_grad', 'r_snow', 'r_ice', 'precip_grad', 'precip_corr', 'T0', 'lapse_rate']
+# -- Parameters and bounds (7 free — CAL-014 Option B) -------------------
+# Changes vs CAL-013:
+#  + lapse_rate (D-034): TN(-4.5e-3, 0.6e-3) — tightened σ per lit review
+#  + ratio 2.0 → 2.5 (D-035 revised, mid-range of literature 1.4-4.2)
+# r_ice no longer independent; derived as r_ice = RICE_RATIO * r_snow.
+PARAM_NAMES = ['MF', 'MF_grad', 'r_snow', 'precip_grad', 'precip_corr', 'T0', 'lapse_rate']
 PARAM_BOUNDS = [
     (1.0, 12.0),            # MF (mm d-1 K-1)
     (-0.01, 0.0),           # MF_grad (mm d-1 K-1 per m)
     (0.02e-3, 2.0e-3),      # r_snow
-    (0.02e-3, 10.0e-3),     # r_ice (D-035, decoupled)
     (0.0002, 0.006),        # precip_grad (fraction/m)
     (1.2, 4.0),             # precip_corr
     (0.0, 3.0),             # T0 (C)
     (-6.5e-3, -2.0e-3),     # lapse_rate (D-034, °C/m)
 ]
 PARAM_RANGES = np.array([hi - lo for lo, hi in PARAM_BOUNDS])
+
+# -- Branch-resolved snowline (D-033 → D-036 CAL-014) --------------------
+# Use manually-digitized branch polygons so snowline likelihood has 3
+# residuals per year (where obs is available) instead of 1.
+# Total snowline obs: north(16) + middle(5) + south(22) = 43 residuals
+BRANCH_POLYGONS = {
+    'north': PROJECT / 'data' / 'glacier_outlines' / 'branches' / 'dixon_north_branch.shp',
+    'middle': PROJECT / 'data' / 'glacier_outlines' / 'branches' / 'dixon_middle_branch.shp',
+    'south': PROJECT / 'data' / 'glacier_outlines' / 'branches' / 'dixon_south_branch.shp',
+}
 
 
 # -- Prior distributions (D-017) ----------------------------------------
@@ -134,17 +156,21 @@ def _truncnorm_logpdf(x, mu, sigma, lo, hi):
 
 
 def log_prior(x):
-    """Compute log-prior for parameter vector x.
+    """Compute log-prior for parameter vector x (CAL-014 Option B, 7 params).
 
-    Priors (CAL-014):
-      MF:         TN(5.0, 3.0) on [1, 12] — Braithwaite 2008 range
+    Priors:
+      MF:         TN(5.0, 3.0) on [1, 12] — Braithwaite 2008
       T0:         TN(1.5, 0.5) on [0, 3]  — standard rain/snow threshold
-      lapse_rate: TN(-4.5e-3, 1.0e-3) on [-6.5e-3, -2.0e-3]
-                  D-034: covers Geck 2021 (-2 to -6), Schuster 2023 (-6.5),
-                  Petersen 2013 (-3.2)
-      r_ice:      TN(4.0e-3, 2.0e-3) on [0.02e-3, 10e-3]
-                  D-035: allows wide range; informative but not dogmatic
+      lapse_rate: TN(-4.5e-3, 0.6e-3) on [-6.5e-3, -2.0e-3]
+                  D-034 (lit-reviewed): σ tightened from 1.0 to 0.6 per
+                  prior validation (avoids MF-lapse compensation).
+                  Prior covers Geck 2021 Eklutna mean -3, McNeil 2020
+                  Juneau Icefield -5, Gardner 2009 summer -4.9.
       Others (MF_grad, r_snow, precip_grad, precip_corr): uniform in bounds
+
+    r_ice is derived (not calibrated): r_ice = RICE_RATIO * r_snow.
+    Ratio 2.5 matches mid-range of literature: Hock 1999 (1.4),
+    Rounce PyGEM (1.43), Trüssel 2015 (1.83), Geck 2021 (4.2).
     """
     params = {n: v for n, v in zip(PARAM_NAMES, x)}
     for name, val in params.items():
@@ -154,12 +180,10 @@ def log_prior(x):
     lp = 0.0
     lp += _truncnorm_logpdf(params['MF'], 5.0, 3.0, 1.0, 12.0)
     lp += _truncnorm_logpdf(params['T0'], 1.5, 0.5, 0.0, 3.0)
-    # D-034: informative prior for lapse rate centered between Geck and OGGM
-    lp += _truncnorm_logpdf(params['lapse_rate'], -4.5e-3, 1.0e-3,
+    # D-034 revised: lit-reviewed informative prior for lapse rate
+    # σ tightened 1.0 → 0.6 to avoid MF-lapse compensation (Sjursen 2023)
+    lp += _truncnorm_logpdf(params['lapse_rate'], -4.5e-3, 0.6e-3,
                             -6.5e-3, -2.0e-3)
-    # D-035: informative prior for r_ice centered ~2x typical r_snow
-    lp += _truncnorm_logpdf(params['r_ice'], 4.0e-3, 2.0e-3,
-                            0.02e-3, 10.0e-3)
     return lp
 
 
@@ -196,16 +220,51 @@ def prepare_period_arrays(climate, start_date, end_date):
     return T, P, doy
 
 
+def _load_branch_masks(grid):
+    """Load branch polygon masks from data/glacier_outlines/branches/.
+
+    Returns dict {branch_name: 2D bool mask on grid}.
+    Used by build_snowline_targets (CAL-014 D-036) to produce
+    branch-resolved snowline residuals.
+    """
+    from rasterio.features import rasterize
+    from shapely.geometry import mapping
+    import geopandas as gpd
+
+    masks = {}
+    for name, path in BRANCH_POLYGONS.items():
+        if not path.exists():
+            print(f"    WARN: branch polygon missing: {path.name}")
+            continue
+        gdf = gpd.read_file(path).to_crs('EPSG:32605')
+        shapes = [(mapping(g), 1) for g in gdf.geometry]
+        raster = rasterize(shapes, out_shape=grid['elevation'].shape,
+                           transform=grid['transform'], fill=0, dtype=np.uint8)
+        masks[name] = (raster == 1) & grid['glacier_mask']
+        area_km2 = masks[name].sum() * grid['cell_size']**2 / 1e6
+        print(f"    {name} branch: {masks[name].sum()} cells, {area_km2:.2f} km²")
+    return masks
+
+
 def build_snowline_targets(climate, grid, snowline_dir):
     """Pre-load observed snowlines and prepare climate arrays for each.
 
+    CAL-014 (D-036): Now produces BRANCH-RESOLVED snowline targets.
+    Each year can contribute up to 3 residuals (north / middle / south
+    branch) if observed snowline intersects each branch. Total target
+    count rises from 22 (whole-glacier) to ~43 (branch-stratified).
+
     Returns list of dicts, each with:
         year, month, day : observation date
-        obs_mean_elev : observed mean snowline elevation (m)
-        obs_std_elev : spatial std of observed snowline elevation (m)
+        branch : 'north' | 'middle' | 'south'
+        obs_mean_elev : observed mean snowline elev in this branch (m)
+        branch_mask : 2D bool mask for modelled snowline extraction
         arrays : (T, P, doy) from Oct 1 to observation date
     """
     from dixon_melt.snowline_validation import load_all_snowlines
+    from rasterio.features import rasterize
+    from shapely.geometry import mapping
+    import geopandas as gpd
 
     dem_info = {
         'elevation': grid['elevation'],
@@ -216,7 +275,15 @@ def build_snowline_targets(climate, grid, snowline_dir):
         'ncols': grid['elevation'].shape[1],
     }
 
+    # Load branch masks
+    print("\n  Loading branch polygons (CAL-014 D-036)...")
+    branch_masks = _load_branch_masks(grid)
+    if not branch_masks:
+        raise RuntimeError("No branch masks loaded; cannot build targets")
+
+    # Load all observed snowlines (whole-glacier rasterizations)
     obs_list = load_all_snowlines(str(snowline_dir), dem_info)
+    elev = grid['elevation']
     targets = []
 
     for obs in obs_list:
@@ -246,15 +313,36 @@ def build_snowline_targets(climate, grid, snowline_dir):
         T = np.where(np.isnan(T), 0.0, T)
         P = np.where(np.isnan(P), 0.0, P)
         doy = np.array(wy.index.dayofyear, dtype=np.int64)
+        arrays = (T, P, doy)
 
-        targets.append({
-            'year': year,
-            'month': month,
-            'day': day,
-            'obs_mean_elev': obs['mean_elevation'],
-            'obs_std_elev': obs.get('std_elevation', np.nan),
-            'arrays': (T, P, doy),
-        })
+        # Split observed snowline by branch (D-036)
+        obs_mask = obs.get('snowline_mask')
+        if obs_mask is None:
+            # Fallback: whole-glacier only
+            targets.append({
+                'year': year, 'month': month, 'day': day,
+                'branch': 'whole',
+                'obs_mean_elev': obs['mean_elevation'],
+                'branch_mask': grid['glacier_mask'],
+                'arrays': arrays,
+            })
+            continue
+
+        for branch_name, bmask in branch_masks.items():
+            # Cells where obs snowline crosses this branch
+            branch_obs = obs_mask & bmask
+            n_obs = branch_obs.sum()
+            if n_obs < 3:  # need at least 3 cells for a meaningful mean
+                continue
+            branch_obs_elev = float(elev[branch_obs].mean())
+            targets.append({
+                'year': year, 'month': month, 'day': day,
+                'branch': branch_name,
+                'obs_mean_elev': branch_obs_elev,
+                'n_obs_cells': int(n_obs),
+                'branch_mask': bmask,
+                'arrays': arrays,
+            })
 
     return targets
 
@@ -365,15 +453,16 @@ def build_calibration_targets(stakes, geodetic, climate, grid, snowline_dir):
 
 
 def _x_to_full_params(x):
-    """Convert 8-element vector to full parameter dict for the model (CAL-014).
+    """Convert 7-element vector to full parameter dict (CAL-014 Option B).
 
     Changes from v13:
-      - `r_ice` is now a free parameter (was `FIXED_RICE_RATIO * r_snow`)
-      - `internal_lapse` ← `lapse_rate` (free parameter; was fixed -5e-3)
-    Only `k_wind` remains fixed at 0.
+      - `internal_lapse` ← `lapse_rate` (free parameter, tightened prior)
+      - `r_ice` derived as `RICE_RATIO * r_snow` with ratio = 2.5 (was 2.0)
+    Only k_wind and the ratio remain fixed (per Option B lit review).
     """
     params = {n: v for n, v in zip(PARAM_NAMES, x)}
-    # r_ice and lapse_rate are now in params directly (from x)
+    # r_ice derived from r_snow (D-035 revised: ratio 2.0 → 2.5)
+    params['r_ice'] = RICE_RATIO * params['r_snow']
     # Map lapse_rate -> internal_lapse for the model kernel
     params['internal_lapse'] = params['lapse_rate']
     params['k_wind'] = FIXED_K_WIND
@@ -449,25 +538,35 @@ def compute_chi2_terms(x, fmodel, targets):
             excess = max(0.0, abs(residual) - gtgt['unc'])
             geodetic_penalty += GEODETIC_LAMBDA * (excess / gtgt['unc']) ** 2
 
-    # Snowline elevation (D-028)
+    # Snowline elevation — BRANCH-RESOLVED (D-036, CAL-014)
+    # Group targets by year to avoid running the model multiple times per year.
+    # Each year may produce up to 3 chi2 terms (one per branch with observations).
     n_snowline_nan = 0
+    snowline_by_year = {}
     for stgt in targets['snowline']:
-        T, P, doy = stgt['arrays']
-        result = fmodel.run(T, P, doy, params, 0.0)
-        modeled = modeled_snowline_elevation(
-            result['cum_accum'], result['cum_melt'],
-            fmodel.elevation, fmodel.glacier_mask)
-        mod_elev = modeled['mean_elevation']
-        if np.isnan(mod_elev):
-            n_snowline_nan += 1
-            continue
-        obs_elev = stgt['obs_mean_elev']
-        all_chi2.append(((mod_elev - obs_elev) / SIGMA_SNOWLINE) ** 2)
+        key = (stgt['year'], stgt['month'], stgt['day'])
+        snowline_by_year.setdefault(key, []).append(stgt)
 
-    # Penalty: if too many snowline years produce NaN (all snow or all ice),
-    # the parameter set is suspect
-    if n_snowline_nan > 5:
-        geodetic_penalty += 10.0 * n_snowline_nan
+    for date_key, branch_targets in snowline_by_year.items():
+        # Run model once for this date (all branches share the same climate run)
+        T, P, doy = branch_targets[0]['arrays']
+        result = fmodel.run(T, P, doy, params, 0.0)
+        # For each branch target, compute modelled snowline within that branch
+        for stgt in branch_targets:
+            modeled = modeled_snowline_elevation(
+                result['cum_accum'], result['cum_melt'],
+                fmodel.elevation, stgt['branch_mask'])
+            mod_elev = modeled['mean_elevation']
+            if np.isnan(mod_elev):
+                n_snowline_nan += 1
+                continue
+            obs_elev = stgt['obs_mean_elev']
+            all_chi2.append(((mod_elev - obs_elev) / SIGMA_SNOWLINE) ** 2)
+
+    # Penalty: if too many snowline targets produce NaN (all snow or all ice),
+    # the parameter set is suspect. Threshold scaled for higher N targets.
+    if n_snowline_nan > 10:  # was 5 for 22 targets; now 10 for ~43 branch targets
+        geodetic_penalty += 5.0 * n_snowline_nan
 
     return all_chi2, geodetic_penalty
 
@@ -1012,27 +1111,44 @@ def main(resume=False):
     run_params = _x_to_full_params(best_x)
 
     print(f"\n{'=' * 70}")
-    print("MAP SNOWLINE VALIDATION")
+    print("MAP SNOWLINE VALIDATION (BRANCH-RESOLVED, D-036)")
     print(f"{'=' * 70}")
-    sl_biases = []
+    # Group by year for efficient model runs
+    sl_by_year = {}
     for stgt in targets['snowline']:
-        T, P, doy = stgt['arrays']
-        result = fmodel.run(T, P, doy, run_params, 0.0)
-        modeled = modeled_snowline_elevation(
-            result['cum_accum'], result['cum_melt'],
-            fmodel.elevation, fmodel.glacier_mask)
-        mod_elev = modeled['mean_elevation']
-        obs_elev = stgt['obs_mean_elev']
-        bias = mod_elev - obs_elev if not np.isnan(mod_elev) else np.nan
-        if not np.isnan(bias):
-            sl_biases.append(bias)
-        status = f"bias={bias:+.0f}m" if not np.isnan(bias) else "NaN (all snow/ice)"
-        print(f"  {stgt['year']}: obs={obs_elev:.0f}m, mod={mod_elev:.0f}m, {status}")
+        key = (stgt['year'], stgt['month'], stgt['day'])
+        sl_by_year.setdefault(key, []).append(stgt)
 
-    sl_biases = np.array(sl_biases)
-    print(f"\n  Snowline summary ({len(sl_biases)} years):")
+    sl_biases_all = []
+    sl_biases_by_branch = {'north': [], 'middle': [], 'south': [], 'whole': []}
+    for date_key, branch_targets in sorted(sl_by_year.items()):
+        T, P, doy = branch_targets[0]['arrays']
+        result = fmodel.run(T, P, doy, run_params, 0.0)
+        year_str = f"{date_key[0]}-{date_key[1]:02d}-{date_key[2]:02d}"
+        print(f"\n  {year_str}:")
+        for stgt in branch_targets:
+            modeled = modeled_snowline_elevation(
+                result['cum_accum'], result['cum_melt'],
+                fmodel.elevation, stgt['branch_mask'])
+            mod_elev = modeled['mean_elevation']
+            obs_elev = stgt['obs_mean_elev']
+            bias = mod_elev - obs_elev if not np.isnan(mod_elev) else np.nan
+            branch = stgt['branch']
+            if not np.isnan(bias):
+                sl_biases_all.append(bias)
+                sl_biases_by_branch[branch].append(bias)
+            status = f"bias={bias:+.0f}m" if not np.isnan(bias) else "NaN"
+            print(f"    {branch:7s}: obs={obs_elev:.0f}m, mod={mod_elev:.0f}m, {status}")
+
+    sl_biases = np.array(sl_biases_all)
+    print(f"\n  Snowline summary — ALL BRANCHES ({len(sl_biases)} residuals):")
     print(f"    Mean bias: {sl_biases.mean():+.0f} m")
-    print(f"    RMSE:      {np.sqrt((sl_biases**2).mean()):.0f} m")
+    print(f"    RMSE:      {np.sqrt(np.mean(sl_biases**2)):.0f} m")
+    for branch, biases in sl_biases_by_branch.items():
+        if biases:
+            ba = np.array(biases)
+            print(f"  {branch} (n={len(ba)}): mean {ba.mean():+.0f}m, "
+                  f"RMSE {np.sqrt(np.mean(ba**2)):.0f}m")
     print(f"    MAE:       {np.abs(sl_biases).mean():.0f} m")
 
     # -- MAP Stake Validation --------------------------------------------

@@ -1548,3 +1548,74 @@ extra params and walkers)
 - MCMC acceptance 0.2-0.5
 - Posterior is unimodal
 - All targets within acceptable residuals (stakes, geodetic, snowline, area)
+
+---
+
+## CAL-014 REVISED — Option B: 7 params + Branch-Resolved Snowlines (D-034 + D-036)
+
+**Date queued:** 2026-04-14 (revised same day from 8-param proposal)
+**Status:** Script ready; awaiting execution
+
+**REVISION from original CAL-014 proposal:**
+
+After second-round literature review (`litreview/cal014_prior_validation_2026-04-14.md`),
+the original 8-parameter design was found to have serious issues:
+- r_ice upper bound 10e-3 would have EXCLUDED Geck's range (0.024-0.041)
+- 8 params exceeded every verified peer precedent for maritime Alaska
+- lapse σ=1.0e-3 too loose, risk of MF-lapse compensation
+
+Revised as Option B (7 params, branch-resolved snowlines).
+
+**Free parameters (7):** MF, MF_grad, r_snow, precip_grad, precip_corr,
+T0, lapse_rate
+
+**Derived:** r_ice = 2.5 × r_snow (ratio revised from 2.0, D-035 revised)
+
+**Priors:**
+- MF: TN(5.0, 3.0) on [1, 12]
+- T0: TN(1.5, 0.5) on [0, 3]
+- lapse_rate: TN(-4.5e-3, **0.6e-3**) on [-6.5e-3, -2.0e-3]  **(D-034 revised: σ tightened from 1.0 to 0.6)**
+- MF_grad, r_snow, precip_grad, precip_corr: uniform
+
+**Likelihood changes:**
+- σ_snowline: 75m → **90m** (D-036, matches CAL-013 structural RMSE)
+- Snowline residuals: 22 whole-glacier → **~43 branch-resolved** (D-036)
+- Stakes: σ=0.12 m w.e. (unchanged, per CAL-013)
+- Geodetic: λ=50 (unchanged)
+
+**Branch snowline observations (D-036, from D-033 polygons):**
+- North branch (11.4 km²): 16 years
+- Middle branch (8.5 km²): 5 years
+- South branch (20.2 km²): 22 years
+- Total: ~43 residuals across 3 spatial regions
+
+**MCMC config:**
+- 5 DE seeds × 10,000 steps population
+- 32 MCMC walkers × 10,000 steps (4.6×ndim for 7 params)
+- 2,000 burn-in
+- Expected runtime: 25-28 hours
+
+**Falsification criteria:**
+- MF should decrease vs CAL-013's 7.30 if Gardner & Sharp 2009 MF-lapse
+  compensation hypothesis is correct (expect MF in 5.5-7 range matching
+  Geck mode 5.75-6.00)
+- lapse_rate posterior should fall within TN(-4.5, 0.6) on bounds — if it
+  pegs at a bound, that's evidence of residual equifinality
+- Posterior marginal σ / prior marginal σ for lapse_rate should be < 0.9
+  (per Sjursen 2023 line 452) — if not, parameter is not identified and
+  should be fixed
+- Branch-resolved snowline biases should be smaller than CAL-013's whole-
+  glacier bias of +30m (since the south branch bias +38m can now trade
+  off against the north +19m instead of averaging)
+
+**Fallback plan if CAL-014 shows equifinality:**
+- Fix lapse_rate at CAL-013's implicit -5.0 value and rerun as CAL-014a
+  (6-param, conservative, matches maritime Alaska consensus)
+
+**Script:** `run_calibration_v14.py`
+**Output prefix:** `_v14` suffix on all outputs
+
+**Key verified literature backing this design:**
+- All claims tied to PDFs in `papers_verified/` (32 verified OA papers)
+- Citation audit 2026-04-14: 6 of 14 earlier DOIs were hallucinated; all
+  citations in D-034, D-035, D-036 have been direct-quote verified
