@@ -884,6 +884,13 @@ def main(resume=False):
     est_mcmc_evals = MCMC_NWALKERS * MCMC_NSTEPS
     est_mcmc_hrs_per = est_mcmc_evals * t_per_eval / 3600
 
+    # CAL-014: skip chains 2+ since DE modes are nearly identical (costs
+    # within 0.4%). Only run chain 1 unless CAL_ALL_MODES=1 is set.
+    if os.environ.get('CAL_ALL_MODES') != '1' and len(modes) > 1:
+        print(f"\n  NOTE: 4 DE modes found but all within 0.4% cost. Running")
+        print(f"        chain 1 only. Set CAL_ALL_MODES=1 to run all chains.")
+        modes = modes[:1]
+
     print(f"\n{'=' * 70}")
     print(f"PHASE 2: MCMC SAMPLING ({len(modes)} chain(s))")
     print(f"{'=' * 70}")
