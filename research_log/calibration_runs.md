@@ -1619,3 +1619,55 @@ T0, lapse_rate
 - All claims tied to PDFs in `papers_verified/` (32 verified OA papers)
 - Citation audit 2026-04-14: 6 of 14 earlier DOIs were hallucinated; all
   citations in D-034, D-035, D-036 have been direct-quote verified
+
+---
+
+## CAL-015 — 8 Parameters, Independent r_ice (D-037)
+
+**Date queued:** 2026-04-17
+**Status:** Script ready; ready to launch
+
+**Motivation:** CAL-014 posterior hit bounds on lapse_rate (-2.2 at upper
+bound -2.0e-3) and r_snow (2.0 at upper bound 2.0e-3). Advisor's Apr 10
+meeting explicitly requested independent r_ice. CAL-015 addresses both.
+
+**Free parameters (8):**
+MF, MF_grad, r_snow, **r_ice (NEW)**, precip_grad, precip_corr, T0, lapse_rate
+
+**Bound changes vs CAL-014:**
+- r_snow upper: 2e-3 → **30e-3** (covers Geck's 9.8e-3)
+- r_ice: FREE with bounds [0.02e-3, 60e-3] (covers Geck's 41e-3)
+- lapse upper: -2e-3 → **-0.5e-3** (unpegs CAL-014 value of -2.2)
+- precip_corr: [1.2, 4.0] → [1.0, 5.0]
+
+**Priors (fresh, literature-based):**
+- MF: TN(5.0, 3.0) on [1, 12] — Braithwaite 2008
+- T0: TN(1.5, 0.5) on [0, 3]
+- r_snow: TN(5e-3, 10e-3) on [0.02e-3, 30e-3]
+- r_ice: TN(12e-3, 15e-3) on [0.02e-3, 60e-3]
+- lapse_rate: TN(-4e-3, 1.5e-3) on [-6.5e-3, -0.5e-3]
+- MF_grad, precip_grad, precip_corr: uniform
+
+**Likelihood:** unchanged from CAL-014
+- 25 stakes, σ=0.12 m w.e.
+- 1 geodetic period (2000-2020), σ=Hugonnet uncertainty
+- 43 branch-resolved snowlines, σ=90m
+
+**MCMC config:**
+- 5 DE seeds → cluster → chains (but only chain 1 per CAL-014 precedent)
+- 32 walkers × 10,000 steps
+- Expected runtime: ~28-32 hours
+
+**Falsification criteria:**
+- No parameter should be pegged at bounds in posterior
+- r_ice/r_snow ratio posterior should fall in [1.3, 5.0]
+- MF should satisfy 4 ≤ MF ≤ 9 (literature range)
+- lapse_rate posterior should be well inside widened bounds
+- Snowline RMSE ≤ 120m (better than CAL-014's 112m? probably)
+- Geodetic bias within Hugonnet ±0.122
+
+**Script:** `run_calibration_v15.py`
+**Output prefix:** `_v15` suffix
+
+**Sanity-tested:** priors work for both default and Geck-like values.
+Ready to launch.

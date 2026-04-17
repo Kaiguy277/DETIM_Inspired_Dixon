@@ -1858,3 +1858,99 @@ Adding these as branch-specific likelihood terms:
 - Expected MCMC runtime: ~25-28 hours (7 params × 32 walkers × 10,000
   steps × 5 seeds; slightly longer than CAL-013 due to more snowline
   terms but fewer params than originally-proposed 8-param CAL-014)
+
+
+## D-037: CAL-015 — Free r_ice Independently, Widen Bounds
+
+**Date:** 2026-04-17
+**Decision:** Run CAL-015 with 8 free parameters (adding independent r_ice),
+widened bounds on parameters that hit limits in CAL-014 (lapse_rate,
+r_snow, precip_corr), and fresh literature-based priors (not informed by
+CAL-014 posterior).
+
+**Motivation:**
+
+1. **CAL-014 posterior hit bounds on two parameters:**
+   - `lapse_rate`: pegged at prior upper bound of -2.0e-3 (posterior
+     median -2.2e-3). Data wants shallower than prior allowed.
+   - `r_snow`: pegged at prior upper bound of 2.0e-3 (posterior median
+     ~2.0e-3). Data wants higher than prior allowed.
+
+2. **Advisor (Dr. Jason Geck) explicitly requested independent r_ice
+   calibration** in April 10, 2026 meeting (Granola notes):
+   *"Ice/snow radiation factor ratio questionable. Currently using 2:1
+   fixed ratio. Should calibrate ice and snow factors independently.
+   Ice dominates in summer when glacier is exposed."*
+
+3. **Geck's own Eklutna paper (2021)** calibrated both r_snow and r_ice
+   independently and got:
+   - r_snow = 0.0098 m² mm W⁻¹ d⁻¹ °C⁻¹
+   - r_ice = 0.0414 m² mm W⁻¹ d⁻¹ °C⁻¹
+   - ratio = 4.22
+   Our fixed ratio of 2.5 in CAL-014 was not supported by the closest
+   analog study.
+
+4. **CAL-014 MF (6.57) and precip_corr (2.70) trade-off** with the
+   bound-capped r_snow suggests a parameterization artifact. Freeing
+   r_ice and widening r_snow bounds should allow the data to find a
+   more physical combination.
+
+**Bound changes from CAL-014:**
+
+| Parameter  | CAL-014 bounds         | CAL-015 bounds         | Rationale              |
+|-----------|------------------------|------------------------|------------------------|
+| r_snow    | [0.02e-3, 2.0e-3]      | [0.02e-3, 30e-3]       | CAL-014 hit upper; cover Geck 9.8e-3 |
+| r_ice     | derived (2.5 × r_snow) | [0.02e-3, 60e-3] FREE  | Advisor request; cover Geck 41e-3    |
+| lapse     | [-6.5e-3, -2.0e-3]     | [-6.5e-3, -0.5e-3]     | CAL-014 hit upper; cover Geck mode -2|
+| precip_corr | [1.2, 4.0]           | [1.0, 5.0]             | CAL-014 hit 2.70; widen    |
+| MF, MF_grad, precip_grad, T0 | unchanged |                         |                        |
+
+**Fresh-start priors (NOT CAL-014 informed):**
+
+| Parameter  | Prior (CAL-015)                        | Rationale                                        |
+|-----------|-----------------------------------------|--------------------------------------------------|
+| MF        | TN(5.0, 3.0) on [1, 12]                 | Braithwaite 2008; Hock 2003 range               |
+| T0        | TN(1.5, 0.5) on [0, 3]                  | Standard rain/snow threshold                    |
+| r_snow    | TN(5e-3, 10e-3) on [0.02e-3, 30e-3]    | Center allows Hock (0.7e-3) or Geck (9.8e-3)   |
+| r_ice     | TN(12e-3, 15e-3) on [0.02e-3, 60e-3]   | Wide σ allows ratio 1.4 (Hock) or 4.2 (Geck)   |
+| lapse_rate| TN(-4.0e-3, 1.5e-3) on [-6.5e-3, -0.5e-3] | Covers Geck mode -2, Gardner summer -5, MALR -6.5 |
+| MF_grad, precip_grad, precip_corr | Uniform in bounds | Let data speak                        |
+
+**Over-parameterization concern (flagged, mitigated):**
+
+Prior lit review (`litreview/cal014_prior_validation_2026-04-14.md`) warned
+against 8 parameters. Mitigations in CAL-015:
+1. Fresh priors prevent CAL-014 bias from dictating posterior
+2. Multi-seed DE (5 seeds) will detect multimodality
+3. Branch-resolved snowlines (43 residuals) + geodetic + 25 stakes + area
+   filter = substantial data constraint
+4. Post-MCMC diagnostics planned: R̂, autocorr τ, posterior correlations
+5. Falsification: if posterior std / prior std > 0.9 for any parameter,
+   that parameter is unidentified and will be fixed for CAL-015a
+
+**Branch-resolved snowlines kept (D-036):**
+- 43 residuals across north (16), middle (5), south (22) branches
+- σ_snowline = 90m (matches CAL-013 structural RMSE)
+
+**Expected runtime:** ~28-32 hours (8 params vs CAL-014's 7; 32 MCMC
+walkers × 10,000 steps).
+
+**Falsification criteria:**
+- Each parameter's posterior should be well inside bounds (not pegged)
+- r_ice/r_snow ratio posterior median should fall in literature range
+  (1.3-5.0); if outside, flag
+- Snowline RMSE should improve vs CAL-014 (was 112m branch-resolved)
+- MCMC acceptance in [0.2, 0.5]; autocorr τ < 200
+
+**Literature References (all from verified PDFs in papers_verified/):**
+- Geck et al. (2021) J. Glaciol., p. 914: r_ice=0.0414, r_snow=0.0098
+- Hock (1999) J. Glaciol., p. 106 Table 1: r_ice=0.8-1e-3, r_snow=0.6-0.7e-3
+- Rounce et al. (2020) PyGEM, p. 176: fixed ratio 1.43 for global model
+- Gardner et al. (2009) J. Climate, p. 4288: summer lapse -4.9±0.4, winter -3.2±0.5
+- Granola notes 2026-04-10: advisor request for independent r_ice
+
+**Implementation:**
+- `run_calibration_v15.py` (copied from v14, modified)
+- 8 free params; RICE_RATIO constant removed
+- All output filenames use `_v15` suffix
+- Branch-resolved snowlines unchanged from CAL-014
