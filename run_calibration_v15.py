@@ -715,7 +715,8 @@ def main(resume=False):
     print("\nJIT compilation warm-up...")
     t0 = time.time()
     # 7 params: MF, MF_grad, r_snow, precip_grad, precip_corr, T0, lapse_rate
-    test_x = np.array([5.0, -0.003, 0.3e-3, 0.001, 2.0, 1.5, -5.0e-3])
+    # 8 params: MF, MF_grad, r_snow, r_ice, precip_grad, precip_corr, T0, lapse_rate
+    test_x = np.array([5.0, -0.003, 0.3e-3, 0.6e-3, 0.001, 2.0, 1.5, -5.0e-3])
     _ = compute_objective(test_x, fmodel, targets)
     print(f"  Done in {time.time()-t0:.1f}s")
 
