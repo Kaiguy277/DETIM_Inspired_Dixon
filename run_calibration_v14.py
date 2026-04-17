@@ -873,7 +873,7 @@ def main(resume=False):
         with open(OUTPUT_DIR / 'best_params_v14.json', 'w') as f:
             save_params = {n: float(v) for n, v in zip(PARAM_NAMES, best_mode['x'])}
             save_params['r_ice'] = RICE_RATIO * save_params['r_snow']
-            save_params['lapse_rate'] = FIXED_LAPSE_RATE
+            # lapse_rate already in save_params from PARAM_NAMES
             save_params['k_wind'] = FIXED_K_WIND
             json.dump(save_params, f, indent=2)
 
@@ -1080,7 +1080,7 @@ def main(resume=False):
     # Save combined posterior
     posterior_df = pd.DataFrame(combined_samples, columns=PARAM_NAMES)
     posterior_df['r_ice'] = RICE_RATIO * posterior_df['r_snow']
-    posterior_df['lapse_rate'] = FIXED_LAPSE_RATE
+    # lapse_rate already in posterior_df (calibrated param in PARAM_NAMES)
     posterior_df.to_csv(OUTPUT_DIR / 'posterior_samples_v14.csv', index=False)
 
     # -- Posterior summary ------------------------------------------------
@@ -1416,7 +1416,7 @@ def main(resume=False):
             'n_modes': len(modes),
         },
         'fixed_params': {
-            'lapse_rate': FIXED_LAPSE_RATE,
+            # lapse_rate is now calibrated (D-034), not fixed
             'r_ice_ratio': RICE_RATIO,
             'k_wind': FIXED_K_WIND,
             'ref_elev': float(config.SNOTEL_ELEV),
