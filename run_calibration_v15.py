@@ -88,7 +88,13 @@ DE_MUTATION = (0.5, 1.0)
 DE_RECOMBINATION = 0.7
 
 # Multiple seeds to probe for multimodality
-DE_SEEDS = [42, 123, 456, 789, 2024]
+# D-038: Reduced from 5 seeds to 2 seeds (2026-04-20)
+# Rationale: CAL-013, CAL-014, and CAL-015-partial (seeds 1-2) all
+# confirmed unimodality. Literature precedent (Rounce 2020 PyGEM,
+# Sjursen 2023, Schuster 2023, Werder 2019) uses single-start
+# optimization; 2 seeds still provides multimodality sanity check
+# while saving ~6-9 hours of compute per calibration.
+DE_SEEDS = [42, 789]   # was [42, 123, 456, 789, 2024]
 N_SEEDS = len(DE_SEEDS)
 
 # Clustering: if two DE optima are within this fraction of parameter range,
@@ -772,7 +778,22 @@ def main(resume=False):
         all_optima_cost = []
         all_de_logs = []
 
+        # CAL-015: per-seed checkpoint file (resume if crash mid-DE)
+        de_checkpoint = OUTPUT_DIR / 'de_checkpoint_v15.json'
+        if de_checkpoint.exists():
+            with open(de_checkpoint) as f:
+                ckpt = json.load(f)
+            all_optima_x = [np.array(x) for x in ckpt['optima_x']]
+            all_optima_cost = ckpt['optima_cost']
+            start_seed = len(all_optima_x)
+            print(f"\n  Resumed DE from checkpoint: {start_seed}/{N_SEEDS} seeds done")
+        else:
+            start_seed = 0
+
         for seed_idx, seed in enumerate(DE_SEEDS):
+            if seed_idx < start_seed:
+                print(f"\n  DE seed {seed_idx+1}/{N_SEEDS} (seed={seed}) — SKIPPED (checkpoint)")
+                continue
             print(f"\n{'─' * 50}")
             print(f"  DE seed {seed_idx+1}/{N_SEEDS} (seed={seed})")
             print(f"{'─' * 50}")
@@ -816,6 +837,15 @@ def main(resume=False):
             all_optima_x.append(result.x.copy())
             all_optima_cost.append(result.fun)
             all_de_logs.extend(de_log)
+
+            # CAL-015: save checkpoint after each seed
+            with open(de_checkpoint, 'w') as f:
+                json.dump({
+                    'optima_x': [x.tolist() for x in all_optima_x],
+                    'optima_cost': [float(c) for c in all_optima_cost],
+                    'completed_seeds': [DE_SEEDS[i] for i in range(len(all_optima_x))],
+                }, f, indent=2)
+            print(f"    [DE checkpoint saved: {len(all_optima_x)}/{N_SEEDS} seeds]")
 
         # Save all DE logs
         pd.DataFrame(all_de_logs).to_csv(OUTPUT_DIR / 'calibration_log_v15_de.csv', index=False)

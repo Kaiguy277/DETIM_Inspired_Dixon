@@ -1954,3 +1954,51 @@ walkers × 10,000 steps).
 - 8 free params; RICE_RATIO constant removed
 - All output filenames use `_v15` suffix
 - Branch-resolved snowlines unchanged from CAL-014
+
+
+## D-038: Reduce DE seeds from 5 to 2 (CAL-015)
+
+**Date:** 2026-04-20
+**Decision:** Reduce `DE_SEEDS` from `[42, 123, 456, 789, 2024]` (5 seeds)
+to `[42, 789]` (2 seeds) in CAL-015 and future calibrations.
+
+**Rationale:**
+
+All three multi-seed calibrations to date have confirmed unimodality:
+- **CAL-013** (7 params): 5 seeds → single mode, cost 5.343 ± 0.001
+- **CAL-014** (7 params): 5 seeds → 4 "modes" within 0.4% cost (4.468-4.485)
+  — functionally one mode, clustering was spurious
+- **CAL-015 partial** (8 params, interrupted): seeds 1-2 gave costs 4.093 vs
+  4.099 (0.15% apart) before crash
+
+**Literature precedent for single-start optimization:**
+- **Rounce et al. (2020) PyGEM** (verified PDF): single SciPy SLSQP start per
+  glacier; uses overdispersed MCMC *chains* (not DE seeds) for convergence
+- **Sjursen et al. (2023)** (verified PDF): single-start DE (ter Braak 2008
+  default)
+- **Schuster et al. (2023)** (verified PDF): single-start
+- **Werder et al. (2019)** (verified PDF): single MAP estimate
+
+Only Geck (2021) uses multi-start, and his approach doesn't explicitly
+justify the number of seeds.
+
+**Trade-off:**
+- Saves ~6-9 hours per calibration (DE phase drops from ~12h to ~4h)
+- Retains 1 sanity check: if the 2 seeds disagree by >1% cost, can
+  investigate (add more seeds, widen priors, etc.)
+- Matches or exceeds typical field practice
+
+**Fallback plan:**
+If the 2 seeds in CAL-015 differ materially, add more seeds manually by
+modifying `DE_SEEDS` and relying on the per-seed checkpoint mechanism.
+
+**Implementation:**
+- `run_calibration_v15.py`: `DE_SEEDS = [42, 789]`
+- Per-seed checkpointing (added same day) means if one seed fails, the
+  other is saved and can be used as-is for MCMC
+
+**Literature references (verified):**
+- `papers_verified/Rounce_2020_PyGEM.pdf`, p. 8
+- `papers_verified/Sjursen_2023_Bayesian_mass_balance.pdf`, methods section
+- `papers_verified/Schuster_2023_TI_calibration.pdf`
+- `papers_verified/Werder_2019_Bayesian_ice_thickness.pdf`
