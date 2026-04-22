@@ -1,0 +1,143 @@
+{
+  "version": 13,
+  "calibration_id": "CAL-013",
+  "method": "Multi-objective DE+MCMC (stakes+geodetic+snowline) + area filter",
+  "decision": "D-028",
+  "changes_from_v12": [
+    "Snowline elevation chi2 added to MCMC likelihood (sigma=75m)",
+    "Post-MCMC area evolution behavioral filter",
+    "Manually digitized outlines (2000-2025, 5-yr intervals)"
+  ],
+  "snowline_config": {
+    "sigma_m": 90.0,
+    "n_years": 43
+  },
+  "area_filter_config": {
+    "n_candidates": 1000,
+    "n_survivors": 1000,
+    "rmse_threshold_km2": 1.0,
+    "checkpoints": {
+      "2000": 40.11,
+      "2005": 40.11,
+      "2010": 39.83,
+      "2015": 39.26,
+      "2020": 38.59,
+      "2025": 38.34
+    }
+  },
+  "de": {
+    "n_seeds": 2,
+    "seeds": [
+      42,
+      789
+    ],
+    "optima": [
+      {
+        "seed": 42,
+        "cost": 4.072221866958747,
+        "params": {
+          "MF": 5.2020245645771945,
+          "MF_grad": -0.007246122584566545,
+          "r_snow": 0.012059601938824828,
+          "r_ice": 0.01405501219088656,
+          "precip_grad": 0.001482049017103912,
+          "precip_corr": 1.6654234269166874,
+          "T0": 0.11305182162450476,
+          "lapse_rate": -0.00214680783298505
+        }
+      },
+      {
+        "seed": 789,
+        "cost": 4.113083187370126,
+        "params": {
+          "MF": 5.540202107335672,
+          "MF_grad": -0.0077778496526052674,
+          "r_snow": 0.01332384426601032,
+          "r_ice": 0.01434437383669843,
+          "precip_grad": 0.0013641539803783806,
+          "precip_corr": 1.4687220263454057,
+          "T0": 0.012015391016861951,
+          "lapse_rate": -0.0031645071808007763
+        }
+      }
+    ],
+    "n_modes": 2,
+    "modes": [
+      {
+        "mode_id": 1,
+        "cost": 4.072221866958747,
+        "seeds": [
+          42
+        ],
+        "params": {
+          "MF": 5.2020245645771945,
+          "MF_grad": -0.007246122584566545,
+          "r_snow": 0.012059601938824828,
+          "r_ice": 0.01405501219088656,
+          "precip_grad": 0.001482049017103912,
+          "precip_corr": 1.6654234269166874,
+          "T0": 0.11305182162450476,
+          "lapse_rate": -0.00214680783298505
+        }
+      },
+      {
+        "mode_id": 2,
+        "cost": 4.113083187370126,
+        "seeds": [
+          789
+        ],
+        "params": {
+          "MF": 5.540202107335672,
+          "MF_grad": -0.0077778496526052674,
+          "r_snow": 0.01332384426601032,
+          "r_ice": 0.01434437383669843,
+          "precip_grad": 0.0013641539803783806,
+          "precip_corr": 1.4687220263454057,
+          "T0": 0.012015391016861951,
+          "lapse_rate": -0.0031645071808007763
+        }
+      }
+    ],
+    "cluster_threshold": 0.1,
+    "de_wall_time_s": 19580.42774629593
+  },
+  "mcmc_chains": [
+    {
+      "mode_id": 1,
+      "mode_cost": 4.072221866958747,
+      "mode_seeds": [
+        42,
+        789
+      ],
+      "mode_params": {
+        "MF": 5.2020245645771945,
+        "MF_grad": -0.007246122584566545,
+        "r_snow": 0.012059601938824828,
+        "r_ice": 0.01405501219088656,
+        "precip_grad": 0.001482049017103912,
+        "precip_corr": 1.6654234269166874,
+        "T0": 0.11305182162450476,
+        "lapse_rate": -0.00214680783298505
+      },
+      "n_walkers": 32,
+      "n_steps": 10000,
+      "burn_in": 2000,
+      "thin": 187,
+      "n_samples": 1376,
+      "acceptance_fraction": 0.329546875,
+      "autocorr_times": [
+        374.44654639588947
+      ],
+      "wall_time_s": 57663.16066598892
+    }
+  ],
+  "combined_posterior": {
+    "n_total_samples": 1376,
+    "n_modes": 1
+  },
+  "fixed_params": {
+    "k_wind": 0.0,
+    "ref_elev": 375.0
+  },
+  "total_wall_time_s": 57863.55413508415
+}
