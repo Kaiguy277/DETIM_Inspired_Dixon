@@ -25,7 +25,7 @@ PROJECT = Path('/home/kai/Documents/Opus46Dixon_FirstShot')
 DEM_PATH = PROJECT / 'ifsar_2010' / 'dixon_glacier_IFSAR_DTM_5m_full.tif'
 GLACIER_PATH = PROJECT / 'geodedic_mb' / 'dixon_glacier_outline_rgi7.geojson'
 CLIMATE_PATH = PROJECT / 'data' / 'climate' / 'dixon_gap_filled_climate.csv'
-RANKED_PATH = PROJECT / 'calibration_output' / 'ranking_v13_full.csv'
+RANKED_PATH = PROJECT / 'calibration_output' / 'ranking_v15_full.csv'
 OUTPUT_DIR = PROJECT / 'validation_output'
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -39,15 +39,20 @@ WINTER_END_DOY = 132  # ~May 12
 
 
 def load_top_params(n=N_TOP):
-    """Load top-N parameter sets from ranked CSV."""
+    """Load top-N parameter sets from ranked CSV.
+
+    Updated for CAL-015: r_ice and lapse_rate are calibrated params
+    in the ranking CSV (not fixed).
+    """
     df = pd.read_csv(RANKED_PATH)
     df = df[df['selected'] == True].head(n)
-    param_cols = ['MF', 'MF_grad', 'r_snow', 'precip_grad', 'precip_corr', 'T0']
+    # CAL-015 has all 8 calibrated params in the CSV
+    param_cols = ['MF', 'MF_grad', 'r_snow', 'r_ice', 'precip_grad',
+                  'precip_corr', 'T0', 'lapse_rate']
     params_list = []
     for _, row in df.iterrows():
         p = {c: row[c] for c in param_cols}
-        p['r_ice'] = 2.0 * p['r_snow']
-        p['internal_lapse'] = -5.0e-3
+        p['internal_lapse'] = p['lapse_rate']  # model kernel expects this name
         p['k_wind'] = 0.0
         params_list.append(p)
     return params_list

@@ -30,7 +30,7 @@ import numpy as np
 from pathlib import Path
 
 PROJECT = Path('/home/kai/Documents/Opus46Dixon_FirstShot')
-FILTERED_PARAMS_PATH = PROJECT / 'calibration_output' / 'filtered_params_v13_top250.json'
+FILTERED_PARAMS_PATH = PROJECT / 'calibration_output' / 'filtered_params_v15_top250.json'
 
 # Lapse rates to test (°C/km → °C/m internally)
 LAPSE_RATES_CKM = [-4.5, -5.0, -5.5]

@@ -36,16 +36,16 @@ OUT = ROOT / "figures" / "methods"
 OUT.mkdir(parents=True, exist_ok=True)
 
 # Data files
-RANKING_CSV = ROOT / "calibration_output" / "ranking_v13_full.csv"
-BEST_PARAMS = ROOT / "calibration_output" / "best_params_v13.json"
+RANKING_CSV = ROOT / "calibration_output" / "ranking_v15_full.csv"
+BEST_PARAMS = ROOT / "calibration_output" / "best_params_v15.json"
 STAKE_OBS = ROOT / "stake_observations_dixon.csv"
 STAKE_CHECK = ROOT / "validation_output" / "stake_predictive_check.csv"
 GEODETIC_VAL = ROOT / "validation_output" / "geodetic_subperiod_validation.csv"
 SENSITIVITY = ROOT / "validation_output" / "sensitivity_fixed_params.csv"
 
-PROJ_SSP126 = ROOT / "projection_output" / "PROJ-032_top250_ssp126_2026-04-09" / "projection_ssp126_ensemble_2100.csv"
-PROJ_SSP245 = ROOT / "projection_output" / "PROJ-033_top250_ssp245_2026-04-09" / "projection_ssp245_ensemble_2100.csv"
-PROJ_SSP585 = ROOT / "projection_output" / "PROJ-034_top250_ssp585_2026-04-09" / "projection_ssp585_ensemble_2100.csv"
+PROJ_SSP126 = ROOT / "projection_output" / "PROJ-044_top250_ssp126_2026-04-22" / "projection_ssp126_ensemble_2100.csv"
+PROJ_SSP245 = ROOT / "projection_output" / "PROJ-045_top250_ssp245_2026-04-22" / "projection_ssp245_ensemble_2100.csv"
+PROJ_SSP585 = ROOT / "projection_output" / "PROJ-046_top250_ssp585_2026-04-22" / "projection_ssp585_ensemble_2100.csv"
 
 def _find_lapse_dir(lapse, ssp):
     """Find the most recent lapse sensitivity projection directory."""
@@ -125,14 +125,16 @@ def fig_01_parameter_posterior():
     with open(BEST_PARAMS) as f:
         best = json.load(f)
 
-    # Parameters to show with display names and units
+    # Parameters to show with display names and units (CAL-015: 8 params)
     params = [
         ("MF", "MF", "mm d$^{-1}$ $^\\circ$C$^{-1}$"),
         ("MF_grad", "MF$_{\\mathrm{grad}}$", "mm d$^{-1}$ $^\\circ$C$^{-1}$ m$^{-1}$"),
         ("r_snow", "$r_{\\mathrm{snow}}$", "mm d$^{-1}$ W$^{-1}$ m$^{2}$ $^\\circ$C$^{-1}$"),
+        ("r_ice", "$r_{\\mathrm{ice}}$", "mm d$^{-1}$ W$^{-1}$ m$^{2}$ $^\\circ$C$^{-1}$"),
         ("precip_grad", "Precip grad", "m$^{-1}$"),
         ("precip_corr", "Precip corr", "unitless"),
         ("T0", "$T_0$", "$^\\circ$C"),
+        ("lapse_rate", "$\\Gamma$ (lapse)", "$^\\circ$C m$^{-1}$"),
     ]
 
     n_params = len(params)
@@ -183,7 +185,7 @@ def fig_01_parameter_posterior():
         ax.text(p95, 0.55, f"{p95:.4g}", ha="center", va="bottom",
                 fontsize=8, color="#2166ac")
 
-    axes[0].set_title("Top-250 posterior parameter distributions (CAL-013)",
+    axes[0].set_title("Top-250 posterior parameter distributions (CAL-015)",
                       fontweight="bold")
 
     # Single legend at top
